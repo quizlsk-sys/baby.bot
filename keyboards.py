@@ -1,0 +1,28 @@
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
+def main_keyboard():
+    buttons = [
+        [KeyboardButton(text="😴 Уснул сейчас"), KeyboardButton(text="👶 Проснулся сейчас")],
+        [KeyboardButton(text="⏰ Уснул 15 мин назад"), KeyboardButton(text="⏰ Проснулся 15 мин назад")],
+        [KeyboardButton(text="⏰ Уснул 30 мин назад"), KeyboardButton(text="⏰ Проснулся 30 мин назад")],
+        [KeyboardButton(text="⌨️ Ввести время вручную"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="❓ Задать вопрос")],
+        [KeyboardButton(text="❤️ Моё самочувствие"), KeyboardButton(text="⚙️ Настройки")],
+    ]
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
+def mood_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="🟢 Хорошо", callback_data="mood_good")],
+        [InlineKeyboardButton(text="🟡 Средне", callback_data="mood_medium")],
+        [InlineKeyboardButton(text="🔴 Плохо", callback_data="mood_bad")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def stats_period_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="За сегодня", callback_data="stats_today")],
+        [InlineKeyboardButton(text="За 3 дня", callback_data="stats_3days")],
+        [InlineKeyboardButton(text="За неделю", callback_data="stats_week")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

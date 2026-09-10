@@ -9,16 +9,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from database import init_db
 from handlers import router
-from scheduler import scheduler
+from scheduler import start_brief_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(router)
 
-# Flask-приложение для пинга (чтобы Render не засыпал)
 flask_app = Flask(__name__)
 
 @flask_app.route('/ping')
@@ -32,19 +30,16 @@ def run_flask():
 async def on_startup():
     print("Инициализация базы данных...")
     init_db()
-    print("Запуск планировщика...")
-    scheduler.start()
-    print("Планировщик запущен.")
+    print("Запуск планировщика брифингов...")
+    start_brief_scheduler(bot)
 
 async def main():
     await on_startup()
 
-    # Запускаем Flask в отдельном потоке
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     print(f"✅ Flask-сервер запущен на порту {os.environ.get('PORT', 10000)}")
 
-    # Запускаем бота
     print("🚀 Запускаем бота...")
     await dp.start_polling(bot)
 

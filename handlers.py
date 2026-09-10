@@ -1,4 +1,3 @@
-import os
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,45 +8,29 @@ import re
 from database import (
     create_user, get_user, add_event, get_last_event, get_day_events,
     get_idea_by_age, answer_question, get_questions_by_category,
-    get_answer_by_id, get_connection, update_user_consent
+    get_answer_by_id, get_connection, update_user_consent,
+    update_user_brief_time, update_user_zodiac, update_user_brief_enabled,
 )
 from states import UserStates
 from keyboards import (
     main_keyboard, consent_keyboard, sleep_keyboard, mood_keyboard,
     stats_period_keyboard, timezone_keyboard, categories_keyboard,
-    questions_keyboard, CATEGORIES
+    questions_keyboard, CATEGORIES,
+    brief_menu_keyboard, zodiac_keyboard, ZODIAC_SIGNS,
 )
 from utils import (
     get_child_age_days, recalc_schedule, generate_stats,
     now_in_user_tz, to_user_tz, get_user_tz
 )
+from ai_helper import generate_text
 
 router = Router()
-
-# ===== ИНИЦИАЛИЗАЦИЯ GigaChat (НОВЫЙ ПРАВИЛЬНЫЙ СПОСОБ) =====
-giga = None
-try:
-    from gigachat import GigaChat
-    api_key = os.environ.get("GIGACHAT_API_KEY")
-    if api_key:
-        # Создаем клиент с указанием модели, scope и отключенной проверкой SSL
-        giga = GigaChat(
-            credentials=api_key,
-            model="GigaChat-2",  # <-- ОБЯЗАТЕЛЬНО указываем модель
-            scope="GIGACHAT_API_PERS",
-            verify_ssl_certs=False
-        )
-        print("✅ GigaChat инициализирован с моделью GigaChat-2.")
-    else:
-        print("⚠️ GIGACHAT_API_KEY не найден в переменных окружения. Будет использована база знаний.")
-except Exception as e:
-    print(f"⚠️ Ошибка инициализации GigaChat: {e}")
-
 
 MAIN_BUTTONS = [
     "😴 Сон", "📊 Статистика",
     "💡 Идея дня", "📚 Полезное",
-    "❤️ Моё самочувствие", "🌍 Часовой пояс",
+    "🌅 Брифинг", "❤️ Моё самочувствие",
+    "🌍 Часовой пояс",
 ]
 
 
@@ -62,7 +45,7 @@ async def cmd_start(message: Message, state: FSMContext):
             f"С возвращением! Ваш бот готов.\n"
             f"Дата рождения ребёнка: {user['child_birthday']}\n"
             f"Часовой пояс: {user['timezone']}\n"
-            f"Время утреннего брифинга: {user['morning_brief_time']}",
+            f"Брифинг: {'включён' if user['brief_enabled'] else 'выключен'} в {user['morning_brief_time']}",
             reply_markup=main_keyboard()
         )
         await state.clear()
@@ -106,8 +89,7 @@ async def process_consent_agree(callback: types.CallbackQuery, state: FSMContext
 async def process_consent_decline(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "❌ Вы отказались от обработки персональных данных.\n\n"
-        "К сожалению, без этого я не смогу работать, так как не смогу сохранять информацию о режиме дня. "
-        "Если передумаете, просто отправьте /start заново."
+        "К сожалению, без этого я не смогу работать. Если передумаете, отправьте /start заново."
     )
     await callback.answer()
     await state.clear()
@@ -141,8 +123,8 @@ async def process_birthday(message: Message, state: FSMContext):
 
     await message.answer(
         "Отлично! Данные сохранены.\n"
-        "По умолчанию установил часовой пояс: Азия/Красноярск.\n"
-        "Если нужно поменять — нажми «🌍 Часовой пояс».",
+        "По умолчанию установил часовой пояс: Азия/Красноярск, и включил утренний брифинг в 08:00.\n"
+        "Настроить брифинг можно по кнопке «🌅 Брифинг».",
         reply_markup=main_keyboard()
     )
     await state.clear()
@@ -381,31 +363,21 @@ async def process_question(message: Message, state: FSMContext):
     age_days = get_child_age_days(user_id)
     age_months = age_days // 30 if age_days is not None else "неизвестно"
 
-    # Если GigaChat доступен — используем ИИ
-    if giga is not None:
-        prompt = (
-            f"Ты — дружелюбный и заботливый помощник для мам. "
-            f"Твоя задача — давать полезные и безопасные советы по уходу за ребёнком. "
-            f"Возраст ребёнка пользователя: примерно {age_months} месяцев. "
-            f"Отвечай кратко, по делу и с эмпатией. "
-            f"Если вопрос касается здоровья, всегда добавляй, что это не заменяет консультацию врача. "
-            f"Вот вопрос мамы: '{user_question}'"
-        )
-        try:
-            # Новый метод вызова: client.chat.create(...)
-            response = giga.chat.create(prompt)
-            # Извлекаем текст ответа
-            ai_answer = response.messages[0].content[0].text
-            await message.answer(f"🤖 {ai_answer}")
-            await state.clear()
-            return
-        except Exception as e:
-            print(f"Ошибка GigaChat API: {e}")
-            # при ошибке — откатываемся на базу знаний
+    prompt = (
+        f"Ты — дружелюбный и заботливый помощник для мам. "
+        f"Твоя задача — давать полезные и безопасные советы по уходу за ребёнком. "
+        f"Возраст ребёнка пользователя: примерно {age_months} месяцев. "
+        f"Отвечай кратко, по делу и с эмпатией. "
+        f"Если вопрос касается здоровья, всегда добавляй, что это не заменяет консультацию врача. "
+        f"Вот вопрос мамы: '{user_question}'"
+    )
 
-    # Fallback — база знаний
-    fallback_answer = answer_question(user_question)
-    await message.answer(fallback_answer)
+    ai_answer = generate_text(prompt)
+    if ai_answer:
+        await message.answer(f"🤖 {ai_answer}")
+    else:
+        await message.answer(answer_question(user_question))
+
     await state.clear()
 
 
@@ -452,4 +424,117 @@ async def timezone_callback(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     await callback.message.answer(f"✅ Часовой пояс изменён на: {tz}")
+    await callback.answer()
+
+
+# ===== БРИФИНГ =====
+@router.message(F.text == "🌅 Брифинг")
+async def brief_menu(message: Message, state: FSMContext):
+    await state.clear()
+    user = get_user(message.from_user.id)
+    if not user:
+        await message.answer("Сначала настрой бота через /start")
+        return
+
+    zodiac_label = ""
+    if user["zodiac"]:
+        zodiac_label = ZODIAC_SIGNS.get(user["zodiac"], user["zodiac"])
+
+    await message.answer(
+        f"🌅 Утренний брифинг\n\n"
+        f"Статус: {'включён ✅' if user['brief_enabled'] else 'выключен 🔕'}\n"
+        f"Время: {user['morning_brief_time']}\n"
+        f"Знак зодиака: {zodiac_label or 'не указан'}\n\n"
+        f"Каждое утро бот будет присылать тёплое сообщение, сгенерированное ИИ: "
+        f"приветствие, идею дня, пожелание и гороскоп.",
+        reply_markup=brief_menu_keyboard(
+            user["brief_enabled"],
+            user["morning_brief_time"],
+            zodiac_label or ""
+        )
+    )
+
+
+@router.callback_query(F.data == "brief_toggle")
+async def brief_toggle(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    user = get_user(user_id)
+    if not user:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+    new_state = not user["brief_enabled"]
+    update_user_brief_enabled(user_id, new_state)
+    await callback.message.edit_text(
+        f"{'✅ Брифинг включён' if new_state else '🔕 Брифинг выключен'}.\n\n"
+        f"Время: {user['morning_brief_time']}",
+        reply_markup=brief_menu_keyboard(new_state, user["morning_brief_time"], ZODIAC_SIGNS.get(user["zodiac"], ""))
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "brief_change_time")
+async def brief_change_time(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "⏰ Введи новое время брифинга в формате ЧЧ:ММ (например, 07:30)."
+    )
+    await state.set_state(UserStates.waiting_brief_time)
+    await callback.answer()
+
+
+@router.message(UserStates.waiting_brief_time, ~F.text.in_(MAIN_BUTTONS))
+async def process_brief_time(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if not re.match(r'^\d{2}:\d{2}$', text):
+        await message.answer("Неверный формат. Напиши, например: 07:30")
+        return
+    try:
+        datetime.strptime(text, "%H:%M")
+    except ValueError:
+        await message.answer("Неверное время. Попробуй снова.")
+        return
+    user_id = message.from_user.id
+    update_user_brief_time(user_id, text)
+    await message.answer(f"✅ Время брифинга изменено на {text}")
+    await state.clear()
+
+
+@router.callback_query(F.data == "brief_change_zodiac")
+async def brief_change_zodiac(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "♈ Выбери свой знак зодиака:",
+        reply_markup=zodiac_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("zod_"))
+async def zodiac_callback(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    key = callback.data.replace("zod_", "", 1)
+    update_user_zodiac(user_id, key)
+    label = ZODIAC_SIGNS.get(key, key)
+    user = get_user(user_id)
+    await callback.message.edit_text(
+        f"✅ Знак зодиака сохранён: {label}",
+        reply_markup=brief_menu_keyboard(
+            user["brief_enabled"], user["morning_brief_time"], label
+        )
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "brief_back")
+async def brief_back(callback: types.CallbackQuery):
+    user = get_user(callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+    zodiac_label = ZODIAC_SIGNS.get(user["zodiac"], "") if user["zodiac"] else ""
+    await callback.message.edit_text(
+        f"🌅 Утренний брифинг\n\n"
+        f"Статус: {'включён ✅' if user['brief_enabled'] else 'выключен 🔕'}\n"
+        f"Время: {user['morning_brief_time']}\n"
+        f"Знак зодиака: {zodiac_label or 'не указан'}",
+        reply_markup=brief_menu_keyboard(user["brief_enabled"], user["morning_brief_time"], zodiac_label)
+    )
     await callback.answer()

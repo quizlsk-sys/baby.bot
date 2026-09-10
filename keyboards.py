@@ -5,13 +5,13 @@ def main_keyboard():
     buttons = [
         [KeyboardButton(text="😴 Сон"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="📚 Полезное")],
-        [KeyboardButton(text="❤️ Моё самочувствие"), KeyboardButton(text="🌍 Часовой пояс")],
+        [KeyboardButton(text="🌅 Брифинг"), KeyboardButton(text="❤️ Моё самочувствие")],
+        [KeyboardButton(text="🌍 Часовой пояс")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
 def consent_keyboard():
-    """Клавиатура для получения согласия на обработку ПДн."""
     buttons = [
         [InlineKeyboardButton(text="✅ Согласен", callback_data="consent_agree")],
         [InlineKeyboardButton(text="❌ Не согласен", callback_data="consent_decline")],
@@ -21,7 +21,6 @@ def consent_keyboard():
 
 
 def sleep_keyboard():
-    """Всплывающее меню отметок сна."""
     buttons = [
         [InlineKeyboardButton(text="😴 Уснул сейчас", callback_data="sleep_start_now"),
          InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="sleep_end_now")],
@@ -65,7 +64,7 @@ def timezone_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# ===== База знаний: категории =====
+# ===== База знаний =====
 CATEGORIES = {
     "сон": "😴 Сон",
     "прикорм": "🍎 Прикорм",
@@ -97,4 +96,45 @@ def questions_keyboard(questions):
             title = title[:57] + "..."
         buttons.append([InlineKeyboardButton(text=title, callback_data=f"q_{q['id']}")])
     buttons.append([InlineKeyboardButton(text="◀️ К категориям", callback_data="cat_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ===== Брифинг =====
+def brief_menu_keyboard(enabled: bool, time_str: str, zodiac: str):
+    toggle_text = "🔕 Выключить брифинг" if enabled else "🔔 Включить брифинг"
+    buttons = [
+        [InlineKeyboardButton(text=toggle_text, callback_data="brief_toggle")],
+        [InlineKeyboardButton(text=f"⏰ Время: {time_str}", callback_data="brief_change_time")],
+        [InlineKeyboardButton(text=f"♈ Знак зодиака: {zodiac or 'не указан'}", callback_data="brief_change_zodiac")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+ZODIAC_SIGNS = {
+    "aries": "♈ Овен",
+    "taurus": "♉ Телец",
+    "gemini": "♊ Близнецы",
+    "cancer": "♋ Рак",
+    "leo": "♌ Лев",
+    "virgo": "♍ Дева",
+    "libra": "♎ Весы",
+    "scorpio": "♏ Скорпион",
+    "sagittarius": "♐ Стрелец",
+    "capricorn": "♑ Козерог",
+    "aquarius": "♒ Водолей",
+    "pisces": "♓ Рыбы",
+}
+
+
+def zodiac_keyboard():
+    buttons = []
+    row = []
+    for key, label in ZODIAC_SIGNS.items():
+        row.append(InlineKeyboardButton(text=label, callback_data=f"zod_{key}"))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="brief_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

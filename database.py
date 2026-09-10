@@ -17,17 +17,26 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             child_birthday TEXT,
-            morning_brief_time TEXT,
+            morning_brief_time TEXT DEFAULT '08:00',
             timezone TEXT,
-            consent_given INTEGER DEFAULT 0
+            consent_given INTEGER DEFAULT 0,
+            brief_enabled INTEGER DEFAULT 1,
+            zodiac TEXT DEFAULT '',
+            last_brief_date TEXT DEFAULT ''
         )
     ''')
 
-    # На случай, если таблица уже существует без нового поля — добавляем его
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN consent_given INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    # Дополняем таблицу, если поля отсутствуют (для старых баз)
+    for alter in [
+        "ALTER TABLE users ADD COLUMN consent_given INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN brief_enabled INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN zodiac TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN last_brief_date TEXT DEFAULT ''",
+    ]:
+        try:
+            cur.execute(alter)
+        except sqlite3.OperationalError:
+            pass
 
     cur.execute('''
         CREATE TABLE IF NOT EXISTS events (
@@ -50,7 +59,7 @@ def init_db():
         )
     ''')
 
-    # === ИДЕИ: добавляем только те, которых ещё нет ===
+    # === ИДЕИ ===
     cur.execute("SELECT text FROM ideas")
     existing = set(row[0] for row in cur.fetchall())
     all_ideas = [
@@ -106,7 +115,7 @@ def init_db():
         cur.executemany("INSERT INTO ideas (age_min, age_max, category, text) VALUES (?,?,?,?)", new_ideas)
         print(f"Добавлено {len(new_ideas)} новых идей в базу.")
 
-    # === БАЗА ЗНАНИЙ (пересоздаём при каждом запуске) ===
+    # === БАЗА ЗНАНИЙ ===
     cur.execute("DROP TABLE IF EXISTS knowledge")
     cur.execute('''
         CREATE TABLE IF NOT EXISTS knowledge (
@@ -284,7 +293,10 @@ def get_user(user_id: int):
             "child_birthday": row[1],
             "morning_brief_time": row[2],
             "timezone": row[3],
-            "consent_given": bool(row[4]) if len(row) > 4 else False
+            "consent_given": bool(row[4]) if len(row) > 4 else False,
+            "brief_enabled": bool(row[5]) if len(row) > 5 and row[5] is not None else True,
+            "zodiac": row[6] if len(row) > 6 and row[6] else "",
+            "last_brief_date": row[7] if len(row) > 7 and row[7] else "",
         }
     return None
 
@@ -293,8 +305,9 @@ def create_user(user_id: int, child_birthday: str, morning_brief_time: str = "08
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR REPLACE INTO users (user_id, child_birthday, morning_brief_time, timezone, consent_given) VALUES (?,?,?,?,?)",
-        (user_id, child_birthday, morning_brief_time, timezone, 0)
+        "INSERT OR REPLACE INTO users (user_id, child_birthday, morning_brief_time, timezone, consent_given, brief_enabled, zodiac, last_brief_date) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (user_id, child_birthday, morning_brief_time, timezone, 0, 1, "", "")
     )
     conn.commit()
     conn.close()
@@ -314,6 +327,49 @@ def update_user_consent(user_id: int, consent: bool):
     cur.execute("UPDATE users SET consent_given = ? WHERE user_id = ?", (1 if consent else 0, user_id))
     conn.commit()
     conn.close()
+
+
+def update_user_zodiac(user_id: int, zodiac: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET zodiac = ? WHERE user_id = ?", (zodiac, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_user_brief_enabled(user_id: int, enabled: bool):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET brief_enabled = ? WHERE user_id = ?", (1 if enabled else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_last_brief_date(user_id: int, date_str: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET last_brief_date = ? WHERE user_id = ?", (date_str, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_users_for_brief():
+    """Возвращает всех пользователей, у которых включён брифинг и дано согласие."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, morning_brief_time, timezone, zodiac, last_brief_date FROM users WHERE brief_enabled = 1 AND consent_given = 1")
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        {
+            "user_id": r[0],
+            "morning_brief_time": r[1] or "08:00",
+            "timezone": r[2] or "Asia/Krasnoyarsk",
+            "zodiac": r[3] or "",
+            "last_brief_date": r[4] or "",
+        }
+        for r in rows
+    ]
 
 
 # ===== События =====

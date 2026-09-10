@@ -6,3 +6,4 @@ class UserStates(StatesGroup):
     waiting_birthday = State()
     waiting_manual_time = State()
     waiting_question = State()
+    waiting_brief_time = State()

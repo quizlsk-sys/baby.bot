@@ -8,4 +8,4 @@ MORNING_BRIEF_HOUR = 8
 MORNING_BRIEF_MINUTE = 0
 
 # Часовой пояс (для Москвы оставьте)
-TIMEZONE = "Europe/Moscow"
+TIMEZONE = "Asia/Krasnoyarsk"

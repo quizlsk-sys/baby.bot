@@ -7,7 +7,7 @@ import re
 
 from database import (
     create_user, get_user, add_event, get_last_event, get_day_events,
-    get_idea_by_age, answer_question, update_user_brief_time,
+    get_idea_by_age, answer_question,
     get_questions_by_category, get_answer_by_id, get_connection
 )
 from states import UserStates
@@ -21,6 +21,16 @@ from utils import (
 )
 
 router = Router()
+
+# Все кнопки главного меню — чтобы бот сбрасывал режим вопроса при их нажатии
+MAIN_BUTTONS = [
+    "😴 Уснул сейчас", "👶 Проснулся сейчас",
+    "⏰ Уснул 15 мин назад", "⏰ Проснулся 15 мин назад",
+    "⏰ Уснул 30 мин назад", "⏰ Проснулся 30 мин назад",
+    "⌨️ Ввести время вручную", "📊 Статистика",
+    "💡 Идея дня", "📚 Полезное",
+    "❤️ Моё самочувствие", "🌍 Часовой пояс",
+]
 
 
 # ===== /start =====
@@ -218,12 +228,13 @@ async def idea_of_day(message: Message):
 # ===== Полезное (база знаний) =====
 @router.message(F.text == "📚 Полезное")
 async def ask_question(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(UserStates.waiting_question)
     await message.answer(
         "📚 Полезные материалы для мамы и малыша.\n\n"
         "Выбери категорию или напиши свой вопрос текстом 👇",
         reply_markup=categories_keyboard()
     )
-    await state.set_state(UserStates.waiting_question)
 
 
 @router.callback_query(F.data.startswith("cat_"))
@@ -265,8 +276,8 @@ async def question_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# Обработка текстового вопроса
-@router.message(UserStates.waiting_question)
+# Обработка текстового вопроса (только если это НЕ кнопка меню)
+@router.message(UserStates.waiting_question, ~F.text.in_(MAIN_BUTTONS))
 async def process_question(message: Message, state: FSMContext):
     answer = answer_question(message.text)
     await message.answer(answer)
@@ -290,35 +301,6 @@ async def mood_callback(callback: types.CallbackQuery):
     await callback.answer()
     if "плохо" in mood:
         await callback.message.answer("Помни, что отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
-
-
-# ===== Настройки =====
-@router.message(F.text == "⚙️ Настройки")
-async def settings(message: Message):
-    user_id = message.from_user.id
-    user = get_user(user_id)
-    if not user:
-        await message.answer("Сначала настрой бота через /start")
-        return
-    await message.answer(
-        f"Текущее время брифинга: {user['morning_brief_time']}\n"
-        f"Чтобы изменить, отправь новое время в формате ЧЧ:ММ (например, 09:00)"
-    )
-
-
-@router.message(F.text.regexp(r'^\d{2}:\d{2}$'))
-async def change_brief_time(message: Message):
-    user_id = message.from_user.id
-    if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
-        return
-    try:
-        datetime.strptime(message.text, "%H:%M")
-    except ValueError:
-        await message.answer("Неверный формат. Используй ЧЧ:ММ")
-        return
-    update_user_brief_time(user_id, message.text)
-    await message.answer(f"Время брифинга изменено на {message.text}")
 
 
 # ===== Часовой пояс =====

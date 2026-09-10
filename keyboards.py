@@ -9,7 +9,6 @@ def main_keyboard():
         [KeyboardButton(text="⌨️ Ввести время вручную"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="📚 Полезное")],
         [KeyboardButton(text="❤️ Моё самочувствие"), KeyboardButton(text="🌍 Часовой пояс")],
-        [KeyboardButton(text="⚙️ Настройки")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 

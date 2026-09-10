@@ -3,14 +3,25 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 def main_keyboard():
     buttons = [
-        [KeyboardButton(text="😴 Уснул сейчас"), KeyboardButton(text="👶 Проснулся сейчас")],
-        [KeyboardButton(text="⏰ Уснул 15 мин назад"), KeyboardButton(text="⏰ Проснулся 15 мин назад")],
-        [KeyboardButton(text="⏰ Уснул 30 мин назад"), KeyboardButton(text="⏰ Проснулся 30 мин назад")],
-        [KeyboardButton(text="⌨️ Ввести время вручную"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="😴 Сон"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="📚 Полезное")],
         [KeyboardButton(text="❤️ Моё самочувствие"), KeyboardButton(text="🌍 Часовой пояс")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
+
+def sleep_keyboard():
+    """Всплывающее меню отметок сна."""
+    buttons = [
+        [InlineKeyboardButton(text="😴 Уснул сейчас", callback_data="sleep_start_now"),
+         InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="sleep_end_now")],
+        [InlineKeyboardButton(text="⏰ Уснул 15 мин назад", callback_data="sleep_start_15"),
+         InlineKeyboardButton(text="⏰ Проснулся 15 мин назад", callback_data="sleep_end_15")],
+        [InlineKeyboardButton(text="⏰ Уснул 30 мин назад", callback_data="sleep_start_30"),
+         InlineKeyboardButton(text="⏰ Проснулся 30 мин назад", callback_data="sleep_end_30")],
+        [InlineKeyboardButton(text="⌨️ Ввести время вручную", callback_data="sleep_manual")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def mood_keyboard():

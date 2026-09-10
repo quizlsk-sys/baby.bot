@@ -12,8 +12,8 @@ from database import (
 )
 from states import UserStates
 from keyboards import (
-    main_keyboard, mood_keyboard, stats_period_keyboard, timezone_keyboard,
-    categories_keyboard, questions_keyboard, CATEGORIES
+    main_keyboard, sleep_keyboard, mood_keyboard, stats_period_keyboard,
+    timezone_keyboard, categories_keyboard, questions_keyboard, CATEGORIES
 )
 from utils import (
     get_child_age_days, recalc_schedule, generate_stats,
@@ -22,12 +22,9 @@ from utils import (
 
 router = Router()
 
-# Все кнопки главного меню — чтобы бот сбрасывал режим вопроса при их нажатии
+# Все кнопки главного меню — чтобы бот сбрасывал режим ожидания при их нажатии
 MAIN_BUTTONS = [
-    "😴 Уснул сейчас", "👶 Проснулся сейчас",
-    "⏰ Уснул 15 мин назад", "⏰ Проснулся 15 мин назад",
-    "⏰ Уснул 30 мин назад", "⏰ Проснулся 30 мин назад",
-    "⌨️ Ввести время вручную", "📊 Статистика",
+    "😴 Сон", "📊 Статистика",
     "💡 Идея дня", "📚 Полезное",
     "❤️ Моё самочувствие", "🌍 Часовой пояс",
 ]
@@ -77,93 +74,112 @@ async def process_birthday(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Отметки сна =====
-@router.message(F.text == "😴 Уснул сейчас")
-async def sleep_start_now(message: Message):
-    user_id = message.from_user.id
-    if not get_user(user_id):
+# ===== Сон: меню и отметки =====
+@router.message(F.text == "😴 Сон")
+async def sleep_menu(message: Message, state: FSMContext):
+    await state.clear()
+    if not get_user(message.from_user.id):
         await message.answer("Сначала настрой бота через /start")
+        return
+    await message.answer("Что отметить?", reply_markup=sleep_keyboard())
+
+
+@router.callback_query(F.data == "sleep_start_now")
+async def cb_sleep_start_now(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if not get_user(user_id):
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_start", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
-    await message.answer(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.answer()
 
 
-@router.message(F.text == "👶 Проснулся сейчас")
-async def sleep_end_now(message: Message):
-    user_id = message.from_user.id
+@router.callback_query(F.data == "sleep_end_now")
+async def cb_sleep_end_now(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
     if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_end", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, now)
-    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.answer()
 
 
-@router.message(F.text == "⏰ Уснул 15 мин назад")
-async def sleep_start_15(message: Message):
-    user_id = message.from_user.id
+@router.callback_query(F.data == "sleep_start_15")
+async def cb_sleep_start_15(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
     if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     ts = int((datetime.now() - timedelta(minutes=15)).timestamp())
     add_event(user_id, "sleep_start", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
-    await message.answer(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.answer()
 
 
-@router.message(F.text == "⏰ Проснулся 15 мин назад")
-async def sleep_end_15(message: Message):
-    user_id = message.from_user.id
+@router.callback_query(F.data == "sleep_end_15")
+async def cb_sleep_end_15(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
     if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     ts = int((datetime.now() - timedelta(minutes=15)).timestamp())
     add_event(user_id, "sleep_end", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.answer()
 
 
-@router.message(F.text == "⏰ Уснул 30 мин назад")
-async def sleep_start_30(message: Message):
-    user_id = message.from_user.id
+@router.callback_query(F.data == "sleep_start_30")
+async def cb_sleep_start_30(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
     if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     ts = int((datetime.now() - timedelta(minutes=30)).timestamp())
     add_event(user_id, "sleep_start", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
-    await message.answer(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.answer()
 
 
-@router.message(F.text == "⏰ Проснулся 30 мин назад")
-async def sleep_end_30(message: Message):
-    user_id = message.from_user.id
+@router.callback_query(F.data == "sleep_end_30")
+async def cb_sleep_end_30(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
     if not get_user(user_id):
-        await message.answer("Сначала настрой бота через /start")
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     ts = int((datetime.now() - timedelta(minutes=30)).timestamp())
     add_event(user_id, "sleep_end", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.answer()
 
 
-# ===== Ручной ввод времени =====
-@router.message(F.text == "⌨️ Ввести время вручную")
-async def manual_time(message: Message, state: FSMContext):
-    await message.answer(
+@router.callback_query(F.data == "sleep_manual")
+async def cb_sleep_manual(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if not get_user(user_id):
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
+        return
+    await callback.message.edit_text(
         "Введите время в формате ЧЧ:ММ (например, 14:30).\n"
         "Укажите, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'"
     )
     await state.set_state(UserStates.waiting_manual_time)
+    await callback.answer()
 
 
-@router.message(UserStates.waiting_manual_time)
+@router.message(UserStates.waiting_manual_time, ~F.text.in_(MAIN_BUTTONS))
 async def process_manual_time(message: Message, state: FSMContext):
     text = message.text.strip().lower()
     match = re.match(r'(уснул|проснулся)\s+(\d{1,2}:\d{2})', text)

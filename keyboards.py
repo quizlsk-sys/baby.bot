@@ -21,6 +21,7 @@ def consent_keyboard():
 
 
 def sleep_keyboard():
+    """Всплывающее меню отметок сна."""
     buttons = [
         [InlineKeyboardButton(text="😴 Уснул сейчас", callback_data="sleep_start_now"),
          InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="sleep_end_now")],
@@ -28,6 +29,7 @@ def sleep_keyboard():
          InlineKeyboardButton(text="⏰ Проснулся 15 мин назад", callback_data="sleep_end_15")],
         [InlineKeyboardButton(text="⏰ Уснул 30 мин назад", callback_data="sleep_start_30"),
          InlineKeyboardButton(text="⏰ Проснулся 30 мин назад", callback_data="sleep_end_30")],
+        [InlineKeyboardButton(text="🌙 Ночное пробуждение", callback_data="night_wake")],
         [InlineKeyboardButton(text="⌨️ Ввести время вручную", callback_data="sleep_manual")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

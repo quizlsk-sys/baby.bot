@@ -221,6 +221,32 @@ async def cb_sleep_end_30(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# ===== Ночное пробуждение =====
+@router.callback_query(F.data == "night_wake")
+async def cb_night_wake(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if not get_user(user_id):
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
+        return
+    now = int(datetime.now().timestamp())
+    add_event(user_id, "night_wake", now)
+    local = now_in_user_tz(user_id).strftime('%H:%M')
+
+    # Считаем, сколько пробуждений уже отмечено за последние 12 часов
+    from datetime import timedelta as td
+    from database import get_events_since
+    since = int((datetime.now() - td(hours=12)).timestamp())
+    events = get_events_since(user_id, since)
+    count = sum(1 for e in events if e["event_type"] == "night_wake")
+
+    await callback.message.edit_text(
+        f"🌙 Отметил ночное пробуждение в {local}.\n"
+        f"Сегодня уже {count} пробуждени{'е' if count == 1 else 'я' if 2 <= count <= 4 else 'й'}.\n\n"
+        f"Если хотите отметить ещё — снова нажмите «😴 Сон»."
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "sleep_manual")
 async def cb_sleep_manual(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -348,7 +374,7 @@ async def question_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== Обработка текстового вопроса — с GigaChat =====
+# ===== Текстовый вопрос — через GigaChat =====
 @router.message(UserStates.waiting_question, ~F.text.in_(MAIN_BUTTONS))
 async def process_question(message: Message, state: FSMContext):
     user_question = message.text

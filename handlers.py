@@ -24,20 +24,22 @@ from utils import (
 
 router = Router()
 
-# ===== ИНИЦИАЛИЗАЦИЯ GigaChat =====
+# ===== ИНИЦИАЛИЗАЦИЯ GigaChat (НОВЫЙ ПРАВИЛЬНЫЙ СПОСОБ) =====
 giga = None
 try:
     from gigachat import GigaChat
     api_key = os.environ.get("GIGACHAT_API_KEY")
     if api_key:
+        # Создаем клиент с указанием модели, scope и отключенной проверкой SSL
         giga = GigaChat(
             credentials=api_key,
-            verify_ssl_certs=False,
-            scope="GIGACHAT_API_PERS"
+            model="GigaChat-2",  # <-- ОБЯЗАТЕЛЬНО указываем модель
+            scope="GIGACHAT_API_PERS",
+            verify_ssl_certs=False
         )
-        print("✅ GigaChat инициализирован.")
+        print("✅ GigaChat инициализирован с моделью GigaChat-2.")
     else:
-        print("⚠️ GIGACHAT_API_KEY не найден, используется база знаний.")
+        print("⚠️ GIGACHAT_API_KEY не найден в переменных окружения. Будет использована база знаний.")
 except Exception as e:
     print(f"⚠️ Ошибка инициализации GigaChat: {e}")
 
@@ -390,8 +392,10 @@ async def process_question(message: Message, state: FSMContext):
             f"Вот вопрос мамы: '{user_question}'"
         )
         try:
-            response = giga.chat(prompt)
-            ai_answer = response.choices[0].message.content
+            # Новый метод вызова: client.chat.create(...)
+            response = giga.chat.create(prompt)
+            # Извлекаем текст ответа
+            ai_answer = response.messages[0].content[0].text
             await message.answer(f"🤖 {ai_answer}")
             await state.clear()
             return

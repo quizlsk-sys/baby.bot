@@ -15,7 +15,7 @@ def consent_keyboard():
     buttons = [
         [InlineKeyboardButton(text="✅ Согласен", callback_data="consent_agree")],
         [InlineKeyboardButton(text="❌ Не согласен", callback_data="consent_decline")],
-        [InlineKeyboardButton(text="📄 Политика конфиденциальности", url="https://example.com/privacy")],
+        [InlineKeyboardButton(text="📄 Политика конфиденциальности", url="https://telegra.ph/Politika-konfidencialnosti-09-10-98")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

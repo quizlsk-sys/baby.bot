@@ -46,6 +46,24 @@ async def cmd_myid(message: Message):
         parse_mode="HTML"
     )
 
+@router.message(Command("delete_me"))
+async def cmd_delete_me(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    conn = get_connection()
+    cur = conn.cursor()
+    # Удаляем все события пользователя
+    cur.execute("DELETE FROM events WHERE user_id = ?", (user_id,))
+    # Удаляем самого пользователя
+    cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    await message.answer(
+        "🗑 Все ваши данные удалены из базы бота.\n\n"
+        "Согласие отозвано. Если захотите снова воспользоваться ботом — "
+        "просто отправьте /start.",
+        reply_markup=None
+    )
+    await state.clear()
 
 @router.message(Command("backup"))
 async def cmd_backup(message: Message):

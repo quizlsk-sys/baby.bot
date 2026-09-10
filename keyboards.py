@@ -10,6 +10,16 @@ def main_keyboard():
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
+def consent_keyboard():
+    """Клавиатура для получения согласия на обработку ПДн."""
+    buttons = [
+        [InlineKeyboardButton(text="✅ Согласен", callback_data="consent_agree")],
+        [InlineKeyboardButton(text="❌ Не согласен", callback_data="consent_decline")],
+        [InlineKeyboardButton(text="📄 Политика конфиденциальности", url="https://example.com/privacy")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def sleep_keyboard():
     """Всплывающее меню отметок сна."""
     buttons = [

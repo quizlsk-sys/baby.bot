@@ -8,20 +8,20 @@ from database import (
 )
 from utils import get_child_age_days, get_user_tz, now_in_user_tz
 from ai_helper import generate_text
+from backup import send_backup
+from config import ADMIN_ID
 
 
 scheduler = AsyncIOScheduler()
 
 
 def _count_night_wakes(user_id: int, hours: int = 12) -> int:
-    """Считает, сколько раз ребёнок просыпался за последние N часов (ночь)."""
     since = int((datetime.now() - timedelta(hours=hours)).timestamp())
     events = get_events_since(user_id, since)
     return sum(1 for e in events if e["event_type"] == "sleep_end")
 
 
 async def send_brief(bot: Bot, user_id: int):
-    """Формирует и отправляет утренний брифинг через GigaChat."""
     user = get_user(user_id)
     if not user:
         return
@@ -51,7 +51,6 @@ async def send_brief(bot: Bot, user_id: int):
     if text:
         message = f"🌅 Доброе утро!\n\n{text}"
     else:
-        # Резервный вариант, если GigaChat недоступен
         message = (
             f"🌅 Доброе утро!\n\n"
             f"☀️ Пусть сегодняшний день будет спокойным и радостным.\n\n"
@@ -68,7 +67,6 @@ async def send_brief(bot: Bot, user_id: int):
 
 
 async def check_briefs(bot: Bot):
-    """Проверяет всех пользователей: кому пора отправить брифинг."""
     users = get_users_for_brief()
     for u in users:
         try:
@@ -77,19 +75,26 @@ async def check_briefs(bot: Bot):
             today_str = now_local.strftime("%Y-%m-%d")
             current_hm = now_local.strftime("%H:%M")
 
-            # Уже отправляли сегодня?
             if u["last_brief_date"] == today_str:
                 continue
 
-            # Время совпадает? (проверка с точностью до минуты)
             if current_hm == u["morning_brief_time"]:
                 await send_brief(bot, u["user_id"])
         except Exception as e:
             print(f"Ошибка при проверке брифинга: {e}")
 
 
+async def daily_backup(bot: Bot):
+    """Ежедневный бэкап базы в Telegram."""
+    if ADMIN_ID == 0:
+        return
+    print("📦 Запускаю ежедневный бэкап...")
+    await send_backup(bot, ADMIN_ID)
+
+
 def start_brief_scheduler(bot: Bot):
-    """Запускает фоновую проверку раз в минуту."""
+    """Запускает фоновые задачи: проверка брифингов и ежедневный бэкап."""
+    # Проверка брифингов раз в минуту
     scheduler.add_job(
         check_briefs,
         "interval",
@@ -98,5 +103,19 @@ def start_brief_scheduler(bot: Bot):
         id="brief_checker",
         replace_existing=True,
     )
+
+    # Ежедневный бэкап в 03:00 UTC (это 10:00 по Красноярску)
+    if ADMIN_ID:
+        scheduler.add_job(
+            daily_backup,
+            "cron",
+            hour=3,
+            minute=0,
+            args=[bot],
+            id="daily_backup",
+            replace_existing=True,
+        )
+        print(f"✅ Планировщик бэкапа запущен (каждый день в 03:00 UTC, ID={ADMIN_ID}).")
+
     scheduler.start()
     print("✅ Планировщик брифингов запущен.")

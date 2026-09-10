@@ -1,11 +1,8 @@
 import os
 
-# СЮДА ВСТАВЬТЕ ТОКЕН, КОТОРЫЙ ПОЛУЧИТЕ ОТ @BotFather (см. Шаг 5)
-BOT_TOKEN = "8996311916:AAGkivp32SMb7cytFv913HS0FiufYG-V0HA"
+# Токен бота
+BOT_TOKEN = os.environ.get("BOT_TOKEN") or "ВАШ_ТОКЕН_ЗДЕСЬ"
 
-# Время утреннего брифинга (можно изменить позже)
-MORNING_BRIEF_HOUR = 8
-MORNING_BRIEF_MINUTE = 0
-
-# Часовой пояс (для Москвы оставьте)
-TIMEZONE = "Asia/Krasnoyarsk"
+# ID администратора — бот будет присылать бэкапы на этот Telegram ID.
+# Оставьте 0, пока не узнаете свой ID через команду /myid.
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))

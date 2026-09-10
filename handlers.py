@@ -5,6 +5,8 @@ from aiogram.types import Message
 from datetime import datetime, timedelta
 import re
 
+from config import ADMIN_ID
+from backup import send_backup
 from database import (
     create_user, get_user, add_event, get_last_event, get_day_events,
     get_idea_by_age, answer_question, get_questions_by_category,
@@ -34,9 +36,37 @@ MAIN_BUTTONS = [
 ]
 
 
+# ===== Служебные команды =====
+@router.message(Command("myid"))
+async def cmd_myid(message: Message):
+    await message.answer(
+        f"🆔 Ваш Telegram ID:\n`{message.from_user.id}`\n\n"
+        f"Скопируйте это число и добавьте его на Render как переменную окружения "
+        f"<b>ADMIN_ID</b>, чтобы получать ежедневные бэкапы базы данных.",
+        parse_mode="HTML"
+    )
+
+
+@router.message(Command("backup"))
+async def cmd_backup(message: Message):
+    user_id = message.from_user.id
+    if ADMIN_ID and user_id != ADMIN_ID:
+        await message.answer("❌ Команда доступна только администратору.")
+        return
+    if ADMIN_ID == 0:
+        await message.answer(
+            f"⚠️ ADMIN_ID не настроен на сервере.\n\n"
+            f"Ваш ID: `{user_id}`\n\n"
+            f"Добавьте переменную окружения ADMIN_ID на Render, чтобы получать бэкапы.",
+            parse_mode="Markdown"
+        )
+        return
+    await message.answer("📦 Создаю бэкап...")
+    await send_backup(message.bot, ADMIN_ID)
+
+
 # ===== Вспомогательная функция: инструкция =====
 async def send_welcome_instructions(message: Message):
-    """Показывает приветствие и инструкцию по настройке."""
     text = (
         "🎉 Отлично, всё настроено!\n\n"
         "📋 <b>Что можно настроить (по желанию):</b>\n\n"
@@ -69,7 +99,6 @@ async def cmd_start(message: Message, state: FSMContext):
     user = get_user(user_id)
 
     if user and user.get("consent_given"):
-        # Пользователь уже зарегистрирован — показываем инструкцию
         await send_welcome_instructions(message)
         await state.clear()
     else:
@@ -144,7 +173,6 @@ async def process_birthday(message: Message, state: FSMContext):
         create_user(user_id, text)
         update_user_consent(user_id, True)
 
-    # Показываем приветствие + инструкцию
     await send_welcome_instructions(message)
     await state.clear()
 
@@ -240,7 +268,6 @@ async def cb_sleep_end_30(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== Ночное пробуждение =====
 @router.callback_query(F.data == "night_wake")
 async def cb_night_wake(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -392,7 +419,6 @@ async def question_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== Текстовый вопрос — через GigaChat =====
 @router.message(UserStates.waiting_question, ~F.text.in_(MAIN_BUTTONS))
 async def process_question(message: Message, state: FSMContext):
     user_question = message.text

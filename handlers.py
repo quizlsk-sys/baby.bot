@@ -197,9 +197,13 @@ async def idea_of_day(message: Message):
     await message.answer(f"💡 Идея дня:\n\n{idea}")
 
 # --- Вопрос ---
-@router.message(F.text == "❓ Задать вопрос")
+@router.message(F.text == "📚 Полезное")
 async def ask_question(message: Message, state: FSMContext):
-    await message.answer("Напиши свой вопрос одним сообщением (например, про прикорм или сон).")
+    await message.answer(
+        "📚 Полезные материалы для мамы и малыша.\n\n"
+        "Выбери категорию или напиши свой вопрос текстом 👇",
+        reply_markup=categories_keyboard()
+    )
     await state.set_state(UserStates.waiting_question)
 
 @router.message(UserStates.waiting_question)

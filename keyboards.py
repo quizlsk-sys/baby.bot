@@ -6,7 +6,7 @@ def main_keyboard():
         [KeyboardButton(text="⏰ Уснул 15 мин назад"), KeyboardButton(text="⏰ Проснулся 15 мин назад")],
         [KeyboardButton(text="⏰ Уснул 30 мин назад"), KeyboardButton(text="⏰ Проснулся 30 мин назад")],
         [KeyboardButton(text="⌨️ Ввести время вручную"), KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="❓ Задать вопрос")],
+        [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="📚 Полезное")],
         [KeyboardButton(text="❤️ Моё самочувствие"), KeyboardButton(text="🌍 Часовой пояс")],
         [KeyboardButton(text="⚙️ Настройки")],
     ]

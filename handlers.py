@@ -34,6 +34,34 @@ MAIN_BUTTONS = [
 ]
 
 
+# ===== Вспомогательная функция: инструкция =====
+async def send_welcome_instructions(message: Message):
+    """Показывает приветствие и инструкцию по настройке."""
+    text = (
+        "🎉 Отлично, всё настроено!\n\n"
+        "📋 <b>Что можно настроить (по желанию):</b>\n\n"
+        "1️⃣ <b>🌅 Утренний брифинг</b>\n"
+        "Каждое утро бот будет присылать тёплое сообщение от ИИ: "
+        "приветствие, идею для занятия с малышом, пожелание и гороскоп.\n"
+        "👉 Нажми кнопку «🌅 Брифинг» внизу → там можно:\n"
+        "   • Включить/выключить\n"
+        "   • Выбрать удобное время (например, 08:00)\n"
+        "   • Указать свой знак зодиака\n\n"
+        "2️⃣ <b>🌍 Часовой пояс</b>\n"
+        "По умолчанию стоит Красноярск. Если ты в другом городе — "
+        "нажми «🌍 Часовой пояс» и выбери свой, чтобы все отметки сна и брифинг "
+        "приходили в правильное время.\n\n"
+        "💡 <b>Остальные кнопки:</b>\n"
+        "😴 <b>Сон</b> — отметки: уснул / проснулся / ночное пробуждение\n"
+        "📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
+        "💡 <b>Идея дня</b> — случайная идея для занятия с малышом\n"
+        "📚 <b>Полезное</b> — ответы на вопросы (сон, прикорм, здоровье…)\n"
+        "❤️ <b>Самочувствие</b> — отмечай своё настроение\n\n"
+        "Хорошего дня! 🌸"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard())
+
+
 # ===== /start =====
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -41,13 +69,8 @@ async def cmd_start(message: Message, state: FSMContext):
     user = get_user(user_id)
 
     if user and user.get("consent_given"):
-        await message.answer(
-            f"С возвращением! Ваш бот готов.\n"
-            f"Дата рождения ребёнка: {user['child_birthday']}\n"
-            f"Часовой пояс: {user['timezone']}\n"
-            f"Брифинг: {'включён' if user['brief_enabled'] else 'выключен'} в {user['morning_brief_time']}",
-            reply_markup=main_keyboard()
-        )
+        # Пользователь уже зарегистрирован — показываем инструкцию
+        await send_welcome_instructions(message)
         await state.clear()
     else:
         await message.answer(
@@ -79,7 +102,7 @@ async def process_consent_agree(callback: types.CallbackQuery, state: FSMContext
         await state.set_state(UserStates.waiting_birthday)
     else:
         await callback.message.edit_text("Спасибо! Согласие получено. ✅")
-        await callback.message.answer("Ваш бот готов к работе!", reply_markup=main_keyboard())
+        await send_welcome_instructions(callback.message)
         await state.clear()
 
     await callback.answer()
@@ -121,12 +144,8 @@ async def process_birthday(message: Message, state: FSMContext):
         create_user(user_id, text)
         update_user_consent(user_id, True)
 
-    await message.answer(
-        "Отлично! Данные сохранены.\n"
-        "По умолчанию установил часовой пояс: Азия/Красноярск, и включил утренний брифинг в 08:00.\n"
-        "Настроить брифинг можно по кнопке «🌅 Брифинг».",
-        reply_markup=main_keyboard()
-    )
+    # Показываем приветствие + инструкцию
+    await send_welcome_instructions(message)
     await state.clear()
 
 
@@ -232,7 +251,6 @@ async def cb_night_wake(callback: types.CallbackQuery):
     add_event(user_id, "night_wake", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
 
-    # Считаем, сколько пробуждений уже отмечено за последние 12 часов
     from datetime import timedelta as td
     from database import get_events_since
     since = int((datetime.now() - td(hours=12)).timestamp())

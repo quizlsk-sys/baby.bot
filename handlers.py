@@ -181,14 +181,11 @@ async def idea_of_day(message: Message):
     if age_days is None:
         await message.answer("Не могу определить возраст. Проверь дату рождения.")
         return
-    ideas = get_ideas_by_age(age_days, limit=5)
-    if not ideas:
-        await message.answer("Для этого возраста пока нет идей. Но вот совет: проводите время на свежем воздухе!")
-        return
-    response = "💡 Вот несколько идей для бодрствования:\n\n"
-    for i, idea in enumerate(ideas, 1):
-        response += f"{i}. {idea}\n"
-    await message.answer(response)
+    
+    # Получаем одну идею
+    from database import get_idea_by_age
+    idea = get_idea_by_age(age_days)
+    await message.answer(f"💡 Идея дня:\n\n{idea}")
 
 @router.message(F.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):

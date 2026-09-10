@@ -56,18 +56,18 @@ async def cmd_start(message: Message, state: FSMContext):
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
     if not re.match(r'\d{4}-\d{2}-\d{2}', text):
-        await message.answer("Пожалуйста, введите дату в формате ГГГГ-ММ-ДД")
+        await message.answer("Пожалуйста, введи дату в формате ГГГГ-ММ-ДД")
         return
     try:
         datetime.strptime(text, "%Y-%m-%d")
     except ValueError:
-        await message.answer("Неверная дата. Попробуйте ещё раз.")
+        await message.answer("Неверная дата. Попробуй ещё раз.")
         return
     user_id = message.from_user.id
     create_user(user_id, text)
     await message.answer(
         "Отлично! Данные сохранены.\n"
-        "По умолчанию установлен часовой пояс: Азия/Красноярск.\n"
+        "По умолчанию установил часовой пояс: Азия/Красноярск.\n"
         "Если нужно поменять — нажми «🌍 Часовой пояс».",
         reply_markup=main_keyboard()
     )
@@ -172,8 +172,8 @@ async def cb_sleep_manual(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     await callback.message.edit_text(
-        "Введите время в формате ЧЧ:ММ (например, 14:30).\n"
-        "Укажите, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'"
+        "Введи время в формате ЧЧ:ММ (например, 14:30).\n"
+        "Укажи, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'"
     )
     await state.set_state(UserStates.waiting_manual_time)
     await callback.answer()
@@ -313,10 +313,10 @@ async def mood_callback(callback: types.CallbackQuery):
     mood = mood_map.get(callback.data.split("_")[1], "неизвестно")
     ts = int(datetime.now().timestamp())
     add_event(user_id, "mom_mood", ts, note=mood)
-    await callback.message.answer(f"Спасибо, отметила: {mood}")
+    await callback.message.answer(f"Спасибо, отметил: {mood}")
     await callback.answer()
     if "плохо" in mood:
-        await callback.message.answer("Помни, что отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
+        await callback.message.answer("Помни: отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
 
 
 # ===== Часовой пояс =====

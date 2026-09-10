@@ -1,5 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
+
 def main_keyboard():
     buttons = [
         [KeyboardButton(text="😴 Уснул сейчас"), KeyboardButton(text="👶 Проснулся сейчас")],
@@ -12,6 +13,7 @@ def main_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
+
 def mood_keyboard():
     buttons = [
         [InlineKeyboardButton(text="🟢 Хорошо", callback_data="mood_good")],
@@ -19,6 +21,7 @@ def mood_keyboard():
         [InlineKeyboardButton(text="🔴 Плохо", callback_data="mood_bad")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 def stats_period_keyboard():
     buttons = [
@@ -28,8 +31,8 @@ def stats_period_keyboard():
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+
 def timezone_keyboard():
-    """Клавиатура с популярными часовыми поясами России."""
     buttons = [
         [InlineKeyboardButton(text="Красноярск (UTC+7)", callback_data="tz_Asia/Krasnoyarsk")],
         [InlineKeyboardButton(text="Москва (UTC+3)", callback_data="tz_Europe/Moscow")],
@@ -39,4 +42,39 @@ def timezone_keyboard():
         [InlineKeyboardButton(text="Калининград (UTC+2)", callback_data="tz_Europe/Kaliningrad")],
         [InlineKeyboardButton(text="Екатеринбург (UTC+5)", callback_data="tz_Asia/Yekaterinburg")],
     ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ===== База знаний: категории =====
+CATEGORIES = {
+    "сон": "😴 Сон",
+    "прикорм": "🍎 Прикорм",
+    "здоровье": "🩺 Здоровье",
+    "развитие": "🧠 Развитие",
+    "уход": "🧴 Уход",
+    "мама": "❤️ Мама",
+}
+
+
+def categories_keyboard():
+    buttons = []
+    row = []
+    for key, label in CATEGORIES.items():
+        row.append(InlineKeyboardButton(text=label, callback_data=f"cat_{key}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def questions_keyboard(questions):
+    buttons = []
+    for q in questions:
+        title = q["title"]
+        if len(title) > 60:
+            title = title[:57] + "..."
+        buttons.append([InlineKeyboardButton(text=title, callback_data=f"q_{q['id']}")])
+    buttons.append([InlineKeyboardButton(text="◀️ К категориям", callback_data="cat_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

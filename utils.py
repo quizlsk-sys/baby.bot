@@ -1,4 +1,22 @@
-from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
+
+def get_user_tz(user_id: int):
+    """Возвращает ZoneInfo с часовым поясом пользователя (или Красноярск по умолчанию)."""
+    user = get_user(user_id)
+    if user and user.get("timezone"):
+        try:
+            return ZoneInfo(user["timezone"])
+        except Exception:
+            pass
+    return ZoneInfo("Asia/Krasnoyarsk")
+
+def now_in_user_tz(user_id: int):
+    """Текущее время в часовом поясе пользователя."""
+    return datetime.now(get_user_tz(user_id))
+
+def to_user_tz(user_id: int, ts: int):
+    """Преобразует unix timestamp в datetime в часовом поясе пользователя."""
+    return datetime.fromtimestamp(ts, get_user_tz(user_id))from datetime import datetime, date, timedelta
 from database import get_user, get_day_events, add_event, get_events_since
 
 def get_child_age_days(user_id: int):
@@ -28,16 +46,17 @@ def recalc_schedule(user_id: int, wake_timestamp: int):
     age_days = get_child_age_days(user_id)
     avg_wake = get_average_wake_time(user_id)
     next_sleep = wake_timestamp + avg_wake * 60
-    next_sleep_dt = datetime.fromtimestamp(next_sleep)
+    next_sleep_dt = to_user_tz(user_id, next_sleep)
     hour = next_sleep_dt.hour
     if 19 <= hour or hour < 6:
         sleep_duration = 540
     else:
         sleep_duration = 90
     wake_after_next = next_sleep + sleep_duration * 60
-    wake_after_next_dt = datetime.fromtimestamp(wake_after_next)
+    wake_after_next_dt = to_user_tz(user_id, wake_after_next)
+    wake_local = to_user_tz(user_id, wake_timestamp)
     msg = (
-        f"🔄 Режим пересчитан на основе пробуждения в {datetime.fromtimestamp(wake_timestamp).strftime('%H:%M')}\n"
+        f"🔄 Режим пересчитан на основе пробуждения в {wake_local.strftime('%H:%M')}\n"
         f"⏳ Рекомендуемое бодрствование: {avg_wake} мин.\n"
         f"💤 Следующий сон: ~ {next_sleep_dt.strftime('%H:%M')}\n"
         f"🌙 Ожидаемое пробуждение: ~ {wake_after_next_dt.strftime('%H:%M')}\n"
@@ -73,7 +92,7 @@ def generate_stats(user_id: int, days=1):
         msg += f"• Средняя длительность сна: {avg_sleep_min:.0f} мин\n"
     msg += f"• Среднее бодрствование: {avg_wake} мин\n"
     msg += f"• Ночные пробуждения: {len(night_wakes)}\n"
-    if len(night_wakes) > 0:
-        times = [datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M") for e in night_wakes]
+    if night_wakes:
+        times = [to_user_tz(user_id, e["timestamp"]).strftime("%H:%M") for e in night_wakes]
         msg += f"  (в {', '.join(times)})\n"
     return msg

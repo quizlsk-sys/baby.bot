@@ -1,18 +1,21 @@
 from aiogram import Router, F, types
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import default_state
-from aiogram.types import ReplyKeyboardRemove, Message
+from aiogram.types import Message
 from datetime import datetime, timedelta
 import re
 
-from database import create_user, get_user, add_event, get_last_event, get_day_events, get_idea_by_age, get_ideas_by_age, answer_question, update_user_brief_time
+from database import (
+    create_user, get_user, add_event, get_last_event, get_day_events,
+    get_idea_by_age, answer_question, update_user_brief_time
+)
 from states import UserStates
-from keyboards import main_keyboard, mood_keyboard, stats_period_keyboard
-from utils import get_child_age_days, recalc_schedule, generate_stats
+from keyboards import main_keyboard, mood_keyboard, stats_period_keyboard, timezone_keyboard
+from utils import get_child_age_days, recalc_schedule, generate_stats, now_in_user_tz, to_user_tz
 
 router = Router()
 
+# --- /start ---
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -21,6 +24,7 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer(
             f"С возвращением! Ваш бот готов.\n"
             f"Дата рождения ребёнка: {user['child_birthday']}\n"
+            f"Часовой пояс: {user['timezone']}\n"
             f"Время утреннего брифинга: {user['morning_brief_time']}",
             reply_markup=main_keyboard()
         )
@@ -46,34 +50,36 @@ async def process_birthday(message: Message, state: FSMContext):
     user_id = message.from_user.id
     create_user(user_id, text)
     await message.answer(
-        f"Отлично! Данные сохранены.\n"
-        f"Теперь ты можешь пользоваться ботом. Нажми на кнопку, чтобы отметить сон.",
+        "Отлично! Данные сохранены.\n"
+        "По умолчанию установлен часовой пояс: Азия/Красноярск.\n"
+        "Если нужно поменять — нажми «🌍 Часовой пояс».",
         reply_markup=main_keyboard()
     )
     await state.clear()
 
+# --- Отметки сна ---
 @router.message(F.text == "😴 Уснул сейчас")
 async def sleep_start_now(message: Message):
     user_id = message.from_user.id
-    user = get_user(user_id)
-    if not user:
+    if not get_user(user_id):
         await message.answer("Сначала настрой бота через /start")
         return
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_start", now)
-    await message.answer(f"✅ Отметил: уснул в {datetime.now().strftime('%H:%M')}")
+    local = now_in_user_tz(user_id).strftime('%H:%M')
+    await message.answer(f"✅ Отметил: уснул в {local}")
 
 @router.message(F.text == "👶 Проснулся сейчас")
 async def sleep_end_now(message: Message):
     user_id = message.from_user.id
-    user = get_user(user_id)
-    if not user:
+    if not get_user(user_id):
         await message.answer("Сначала настрой бота через /start")
         return
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_end", now)
+    local = now_in_user_tz(user_id).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, now)
-    await message.answer(f"✅ Отметил: проснулся в {datetime.now().strftime('%H:%M')}\n\n{schedule_text}")
+    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
 
 @router.message(F.text == "⏰ Уснул 15 мин назад")
 async def sleep_start_15(message: Message):
@@ -83,7 +89,8 @@ async def sleep_start_15(message: Message):
         return
     ts = int((datetime.now() - timedelta(minutes=15)).timestamp())
     add_event(user_id, "sleep_start", ts)
-    await message.answer(f"✅ Отметил: уснул в {datetime.fromtimestamp(ts).strftime('%H:%M')}")
+    local = to_user_tz(user_id, ts).strftime('%H:%M')
+    await message.answer(f"✅ Отметил: уснул в {local}")
 
 @router.message(F.text == "⏰ Проснулся 15 мин назад")
 async def sleep_end_15(message: Message):
@@ -93,8 +100,9 @@ async def sleep_end_15(message: Message):
         return
     ts = int((datetime.now() - timedelta(minutes=15)).timestamp())
     add_event(user_id, "sleep_end", ts)
+    local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await message.answer(f"✅ Отметил: проснулся в {datetime.fromtimestamp(ts).strftime('%H:%M')}\n\n{schedule_text}")
+    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
 
 @router.message(F.text == "⏰ Уснул 30 мин назад")
 async def sleep_start_30(message: Message):
@@ -104,7 +112,8 @@ async def sleep_start_30(message: Message):
         return
     ts = int((datetime.now() - timedelta(minutes=30)).timestamp())
     add_event(user_id, "sleep_start", ts)
-    await message.answer(f"✅ Отметил: уснул в {datetime.fromtimestamp(ts).strftime('%H:%M')}")
+    local = to_user_tz(user_id, ts).strftime('%H:%M')
+    await message.answer(f"✅ Отметил: уснул в {local}")
 
 @router.message(F.text == "⏰ Проснулся 30 мин назад")
 async def sleep_end_30(message: Message):
@@ -114,13 +123,17 @@ async def sleep_end_30(message: Message):
         return
     ts = int((datetime.now() - timedelta(minutes=30)).timestamp())
     add_event(user_id, "sleep_end", ts)
+    local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await message.answer(f"✅ Отметил: проснулся в {datetime.fromtimestamp(ts).strftime('%H:%M')}\n\n{schedule_text}")
+    await message.answer(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
 
+# --- Ручной ввод ---
 @router.message(F.text == "⌨️ Ввести время вручную")
 async def manual_time(message: Message, state: FSMContext):
-    await message.answer("Введите время в формате ЧЧ:ММ (например, 14:30).\n"
-                         "Укажите, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'")
+    await message.answer(
+        "Введите время в формате ЧЧ:ММ (например, 14:30).\n"
+        "Укажите, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'"
+    )
     await state.set_state(UserStates.waiting_manual_time)
 
 @router.message(UserStates.waiting_manual_time)
@@ -132,21 +145,26 @@ async def process_manual_time(message: Message, state: FSMContext):
         return
     event_type = "sleep_start" if match.group(1) == "уснул" else "sleep_end"
     time_str = match.group(2)
+    user_id = message.from_user.id
     try:
-        now = datetime.now()
-        dt = datetime.strptime(f"{now.date().isoformat()} {time_str}", "%Y-%m-%d %H:%M")
+        # Строим datetime в часовом поясе пользователя
+        from utils import get_user_tz
+        tz = get_user_tz(user_id)
+        today = now_in_user_tz(user_id).date()
+        h, m = map(int, time_str.split(':'))
+        dt = datetime(today.year, today.month, today.day, h, m, tzinfo=tz)
         ts = int(dt.timestamp())
     except ValueError:
         await message.answer("Неверный формат времени. Используй ЧЧ:ММ")
         return
-    user_id = message.from_user.id
     add_event(user_id, event_type, ts)
-    await message.answer(f"✅ Отметил: {event_type} в {time_str}")
+    await message.answer(f"✅ Отметил: {'уснул' if event_type == 'sleep_start' else 'проснулся'} в {time_str}")
     if event_type == "sleep_end":
         schedule_text = recalc_schedule(user_id, ts)
         await message.answer(schedule_text)
     await state.clear()
 
+# --- Статистика ---
 @router.message(F.text == "📊 Статистика")
 async def stats_request(message: Message):
     await message.answer("Выбери период:", reply_markup=stats_period_keyboard())
@@ -158,18 +176,12 @@ async def stats_callback(callback: types.CallbackQuery):
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     period = callback.data.split("_")[1]
-    if period == "today":
-        days = 1
-    elif period == "3days":
-        days = 3
-    elif period == "week":
-        days = 7
-    else:
-        days = 1
+    days = {"today": 1, "3days": 3, "week": 7}.get(period, 1)
     stats_text = generate_stats(user_id, days)
     await callback.message.answer(stats_text)
     await callback.answer()
 
+# --- Идея дня ---
 @router.message(F.text == "💡 Идея дня")
 async def idea_of_day(message: Message):
     user_id = message.from_user.id
@@ -181,12 +193,10 @@ async def idea_of_day(message: Message):
     if age_days is None:
         await message.answer("Не могу определить возраст. Проверь дату рождения.")
         return
-    
-    # Получаем одну идею
-    from database import get_idea_by_age
     idea = get_idea_by_age(age_days)
     await message.answer(f"💡 Идея дня:\n\n{idea}")
 
+# --- Вопрос ---
 @router.message(F.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
     await message.answer("Напиши свой вопрос одним сообщением (например, про прикорм или сон).")
@@ -194,11 +204,11 @@ async def ask_question(message: Message, state: FSMContext):
 
 @router.message(UserStates.waiting_question)
 async def process_question(message: Message, state: FSMContext):
-    question = message.text
-    answer = answer_question(question)
+    answer = answer_question(message.text)
     await message.answer(answer)
     await state.clear()
 
+# --- Самочувствие ---
 @router.message(F.text == "❤️ Моё самочувствие")
 async def mom_mood(message: Message):
     await message.answer("Как ты себя чувствуешь?", reply_markup=mood_keyboard())
@@ -215,6 +225,7 @@ async def mood_callback(callback: types.CallbackQuery):
     if "плохо" in mood:
         await callback.message.answer("Помни, что отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
 
+# --- Настройки ---
 @router.message(F.text == "⚙️ Настройки")
 async def settings(message: Message):
     user_id = message.from_user.id
@@ -222,9 +233,8 @@ async def settings(message: Message):
     if not user:
         await message.answer("Сначала настрой бота через /start")
         return
-    current_brief = user['morning_brief_time']
     await message.answer(
-        f"Текущее время утреннего брифинга: {current_brief}\n"
+        f"Текущее время брифинга: {user['morning_brief_time']}\n"
         f"Чтобы изменить, отправь новое время в формате ЧЧ:ММ (например, 09:00)"
     )
 
@@ -234,11 +244,37 @@ async def change_brief_time(message: Message):
     if not get_user(user_id):
         await message.answer("Сначала настрой бота через /start")
         return
-    new_time = message.text
     try:
-        datetime.strptime(new_time, "%H:%M")
+        datetime.strptime(message.text, "%H:%M")
     except ValueError:
         await message.answer("Неверный формат. Используй ЧЧ:ММ")
         return
-    update_user_brief_time(user_id, new_time)
-    await message.answer(f"Время брифинга изменено на {new_time}")
+    update_user_brief_time(user_id, message.text)
+    await message.answer(f"Время брифинга изменено на {message.text}")
+
+# --- Часовой пояс ---
+@router.message(F.text == "🌍 Часовой пояс")
+async def timezone_menu(message: Message):
+    user = get_user(message.from_user.id)
+    if not user:
+        await message.answer("Сначала настрой бота через /start")
+        return
+    await message.answer(
+        f"Текущий часовой пояс: {user['timezone']}\n"
+        f"Выбери новый:",
+        reply_markup=timezone_keyboard()
+    )
+
+@router.callback_query(F.data.startswith("tz_"))
+async def timezone_callback(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    tz = callback.data.replace("tz_", "", 1)
+    # Обновляем timezone в БД
+    from database import get_connection
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET timezone = ? WHERE user_id = ?", (tz, user_id))
+    conn.commit()
+    conn.close()
+    await callback.message.answer(f"✅ Часовой пояс изменён на: {tz}")
+    await callback.answer()

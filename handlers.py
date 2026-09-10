@@ -181,12 +181,10 @@ async def idea_of_day(message: Message):
     if age_days is None:
         await message.answer("Не могу определить возраст. Проверь дату рождения.")
         return
-    # Получаем 5 случайных идей
     ideas = get_ideas_by_age(age_days, limit=5)
     if not ideas:
         await message.answer("Для этого возраста пока нет идей. Но вот совет: проводите время на свежем воздухе!")
         return
-    # Формируем красивое сообщение
     response = "💡 Вот несколько идей для бодрствования:\n\n"
     for i, idea in enumerate(ideas, 1):
         response += f"{i}. {idea}\n"

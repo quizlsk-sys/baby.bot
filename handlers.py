@@ -36,34 +36,26 @@ MAIN_BUTTONS = [
 ]
 
 
+# ===== Вспомогательные функции =====
+def format_birthday_display(iso_str: str) -> str:
+    """Преобразует дату из БД (YYYY-MM-DD) в формат для показа (DD-MM-YYYY)."""
+    if not iso_str:
+        return ""
+    try:
+        return datetime.strptime(iso_str, "%Y-%m-%d").strftime("%d-%m-%Y")
+    except (ValueError, TypeError):
+        return iso_str
+
+
 # ===== Служебные команды =====
 @router.message(Command("myid"))
 async def cmd_myid(message: Message):
     await message.answer(
-        f"🆔 Ваш Telegram ID:\n`{message.from_user.id}`\n\n"
+        f"🆔 Ваш Telegram ID: {message.from_user.id}\n\n"
         f"Скопируйте это число и добавьте его на Render как переменную окружения "
-        f"<b>ADMIN_ID</b>, чтобы получать ежедневные бэкапы базы данных.",
-        parse_mode="HTML"
+        f"ADMIN_ID, чтобы получать ежедневные бэкапы базы данных."
     )
 
-@router.message(Command("delete_me"))
-async def cmd_delete_me(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    conn = get_connection()
-    cur = conn.cursor()
-    # Удаляем все события пользователя
-    cur.execute("DELETE FROM events WHERE user_id = ?", (user_id,))
-    # Удаляем самого пользователя
-    cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-    await message.answer(
-        "🗑 Все ваши данные удалены из базы бота.\n\n"
-        "Согласие отозвано. Если захотите снова воспользоваться ботом — "
-        "просто отправьте /start.",
-        reply_markup=None
-    )
-    await state.clear()
 
 @router.message(Command("backup"))
 async def cmd_backup(message: Message):
@@ -74,13 +66,30 @@ async def cmd_backup(message: Message):
     if ADMIN_ID == 0:
         await message.answer(
             f"⚠️ ADMIN_ID не настроен на сервере.\n\n"
-            f"Ваш ID: `{user_id}`\n\n"
-            f"Добавьте переменную окружения ADMIN_ID на Render, чтобы получать бэкапы.",
-            parse_mode="Markdown"
+            f"Ваш ID: {user_id}\n\n"
+            f"Добавьте переменную окружения ADMIN_ID на Render, чтобы получать бэкапы."
         )
         return
     await message.answer("📦 Создаю бэкап...")
     await send_backup(message.bot, ADMIN_ID)
+
+
+@router.message(Command("delete_me"))
+async def cmd_delete_me(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM events WHERE user_id = ?", (user_id,))
+    cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    await message.answer(
+        "🗑 Все ваши данные удалены из базы бота.\n\n"
+        "Согласие отозвано. Если захотите снова воспользоваться ботом — "
+        "просто отправьте /start.",
+        reply_markup=None
+    )
+    await state.clear()
 
 
 # ===== Вспомогательная функция: инструкция =====
@@ -144,7 +153,7 @@ async def process_consent_agree(callback: types.CallbackQuery, state: FSMContext
     if not user or user["child_birthday"] == "1970-01-01":
         await callback.message.edit_text(
             "Отлично! Спасибо за согласие. ✅\n\n"
-            "Теперь укажите дату рождения ребёнка в формате ГГГГ-ММ-ДД (например, 2024-01-01):"
+            "Теперь укажите дату рождения ребёнка в формате ДД-ММ-ГГГГ (например, 15-01-2024):"
         )
         await state.set_state(UserStates.waiting_birthday)
     else:
@@ -165,18 +174,24 @@ async def process_consent_decline(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
 
 
-# ===== Дата рождения =====
+# ===== Дата рождения (формат ДД-ММ-ГГГГ) =====
 @router.message(UserStates.waiting_birthday)
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
-    if not re.match(r'\d{4}-\d{2}-\d{2}', text):
-        await message.answer("Пожалуйста, введи дату в формате ГГГГ-ММ-ДД")
+
+    # Проверяем формат ДД-ММ-ГГГГ
+    if not re.match(r'^\d{2}-\d{2}-\d{4}$', text):
+        await message.answer("Пожалуйста, введи дату в формате ДД-ММ-ГГГГ (например, 15-01-2024)")
         return
+
     try:
-        datetime.strptime(text, "%Y-%m-%d")
+        parsed = datetime.strptime(text, "%d-%m-%Y")
     except ValueError:
-        await message.answer("Неверная дата. Попробуй ещё раз.")
+        await message.answer("Неверная дата. Попробуй ещё раз в формате ДД-ММ-ГГГГ")
         return
+
+    # Сохраняем в БД в формате ISO (ГГГГ-ММ-ДД) для совместимости
+    iso_str = parsed.strftime("%Y-%m-%d")
 
     user_id = message.from_user.id
     user = get_user(user_id)
@@ -184,11 +199,11 @@ async def process_birthday(message: Message, state: FSMContext):
     if user:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("UPDATE users SET child_birthday = ? WHERE user_id = ?", (text, user_id))
+        cur.execute("UPDATE users SET child_birthday = ? WHERE user_id = ?", (iso_str, user_id))
         conn.commit()
         conn.close()
     else:
-        create_user(user_id, text)
+        create_user(user_id, iso_str)
         update_user_consent(user_id, True)
 
     await send_welcome_instructions(message)

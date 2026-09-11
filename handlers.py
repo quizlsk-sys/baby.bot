@@ -102,7 +102,7 @@ async def send_welcome_instructions(message: Message):
         "нажми «🌍 Часовой пояс» и выбери свой, чтобы все отметки сна и брифинг "
         "приходили в правильное время.\n\n"
         "2️⃣ <b>🌅 Утренний брифинг</b>\n"
-        "Каждое утро бот присылает тёплое сообщение от ИИ: "
+        "Каждое утро бот будет присылать тёплое персональное сообщение: "
         "приветствие, идею для занятия с малышом, пожелание и гороскоп.\n"
         "👉 Нажми кнопку «🌅 Брифинг» внизу → там можно:\n"
         "   • Включить/выключить\n"
@@ -417,7 +417,6 @@ async def process_manual_time(message: Message, state: FSMContext):
         return
     add_event(user_id, event_type, ts)
 
-    action_ru = "заснул" if event_type == "sleep_start" else "проснулся"
     local_str = to_user_tz(user_id, ts).strftime('%H:%M')
 
     if event_type == "sleep_start":
@@ -611,7 +610,6 @@ async def timezone_callback(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
 
-    # Формируем человекочитаемое название
     tz_names = {
         "Asia/Krasnoyarsk": "Красноярск (UTC+7)",
         "Europe/Moscow": "Москва (UTC+3)",
@@ -623,7 +621,6 @@ async def timezone_callback(callback: types.CallbackQuery):
     }
     label = tz_names.get(tz, tz)
 
-    # Сразу показываем текущее время в новом поясе — чтобы жена увидела разницу
     now_local = now_in_user_tz(user_id).strftime('%H:%M')
 
     await callback.message.edit_text(
@@ -653,7 +650,7 @@ async def brief_menu(message: Message, state: FSMContext):
         f"Статус: {'включён ✅' if user['brief_enabled'] else 'выключен 🔕'}\n"
         f"Время: {user['morning_brief_time']}\n"
         f"Знак зодиака: {zodiac_label or 'не указан'}\n\n"
-        f"Каждое утро бот будет присылать тёплое сообщение, сгенерированное ИИ: "
+        f"Каждое утро бот будет присылать тёплое персональное сообщение: "
         f"приветствие, идею дня, пожелание и гороскоп.",
         reply_markup=brief_menu_keyboard(
             user["brief_enabled"],

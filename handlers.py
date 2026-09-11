@@ -19,12 +19,13 @@ from states import UserStates
 from keyboards import (
     main_keyboard, consent_keyboard, name_skip_keyboard,
     sleep_main_keyboard, sleep_day_keyboard, sleep_night_keyboard,
-    sleep_list_keyboard, mood_keyboard, stats_period_keyboard,
-    timezone_keyboard, categories_keyboard, questions_keyboard, CATEGORIES,
+    sleep_list_keyboard, plan_back_keyboard, mood_keyboard,
+    stats_period_keyboard, timezone_keyboard, categories_keyboard,
+    questions_keyboard, CATEGORIES,
     brief_menu_keyboard, zodiac_keyboard, ZODIAC_SIGNS,
 )
 from utils import (
-    get_child_age_days, recalc_schedule, generate_stats,
+    get_child_age_days, recalc_schedule, generate_stats, build_day_plan,
     now_in_user_tz, to_user_tz, get_user_tz,
 )
 from ai_helper import generate_text
@@ -177,7 +178,7 @@ async def send_welcome_instructions(message: Message, user=None):
         f"приветствие, идею для занятия с {name}, пожелание и гороскоп.\n"
         f"👉 Кнопка «🌅 Брифинг» внизу.\n\n"
         f"💡 <b>Остальные кнопки:</b>\n"
-        f"😴 <b>Сон</b> — отметить сон {name}: дневной / ночной / пробуждение\n"
+        f"😴 <b>Сон</b> — отметка сна {name} + 📅 план дня\n"
         f"📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
         f"💡 <b>Идея дня</b> — случайная идея для занятия\n"
         f"📚 <b>Полезное</b> — ответы на вопросы\n"
@@ -194,7 +195,6 @@ async def cmd_start(message: Message, state: FSMContext):
     user = get_user(user_id)
 
     if user and user.get("consent_given"):
-        # Если имя ещё не задано — спросим
         if not user.get("child_name"):
             await message.answer(
                 "Как зовут малыша? Это нужно для персональных сообщений "
@@ -252,7 +252,7 @@ async def process_consent_decline(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
 
 
-# ===== Дата рождения (формат ДД-ММ-ГГГГ) =====
+# ===== Дата рождения =====
 @router.message(UserStates.waiting_birthday)
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
@@ -313,7 +313,6 @@ async def process_name_skip(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ===== Изменение имени из /start =====
 @router.message(UserStates.waiting_child_name_change, ~F.text.in_(MAIN_BUTTONS))
 async def process_child_name_change(message: Message, state: FSMContext):
     text = message.text.strip()
@@ -355,6 +354,23 @@ async def cb_sleep_back(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# ===== ПЛАН ДНЯ =====
+@router.callback_query(F.data == "sleep_plan")
+async def cb_sleep_plan(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if not get_user(user_id):
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
+        return
+    plan_text = build_day_plan(user_id)
+    await callback.message.edit_text(
+        plan_text + "\n\n<i>План строится по возрасту ребёнка и последнему пробуждению. "
+        "После каждого сна он пересчитывается.</i>",
+        parse_mode="HTML",
+        reply_markup=plan_back_keyboard()
+    )
+    await callback.answer()
+
+
 # ===== ДНЕВНОЙ СОН =====
 @router.callback_query(F.data == "sleep_day_menu")
 async def cb_day_menu(callback: types.CallbackQuery):
@@ -371,32 +387,32 @@ async def cb_day_menu(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "day_start_now")
 async def cb_day_start_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 0, is_night=False, minutes_ago=0)
+    await _record_sleep(callback, "sleep_start", minutes_ago=0, is_night=False)
 
 
 @router.callback_query(F.data == "day_start_15")
 async def cb_day_start_15(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 15, is_night=False, minutes_ago=15)
+    await _record_sleep(callback, "sleep_start", minutes_ago=15, is_night=False)
 
 
 @router.callback_query(F.data == "day_start_30")
 async def cb_day_start_30(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 30, is_night=False, minutes_ago=30)
+    await _record_sleep(callback, "sleep_start", minutes_ago=30, is_night=False)
 
 
 @router.callback_query(F.data == "day_end_now")
 async def cb_day_end_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 0, is_night=False, minutes_ago=0)
+    await _record_sleep(callback, "sleep_end", minutes_ago=0, is_night=False)
 
 
 @router.callback_query(F.data == "day_end_15")
 async def cb_day_end_15(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 15, is_night=False, minutes_ago=15)
+    await _record_sleep(callback, "sleep_end", minutes_ago=15, is_night=False)
 
 
 @router.callback_query(F.data == "day_end_30")
 async def cb_day_end_30(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 30, is_night=False, minutes_ago=30)
+    await _record_sleep(callback, "sleep_end", minutes_ago=30, is_night=False)
 
 
 # ===== НОЧНОЙ СОН =====
@@ -415,16 +431,16 @@ async def cb_night_menu(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "night_start_now")
 async def cb_night_start_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 0, is_night=True, minutes_ago=0)
+    await _record_sleep(callback, "sleep_start", minutes_ago=0, is_night=True)
 
 
 @router.callback_query(F.data == "night_end_now")
 async def cb_night_end_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 0, is_night=True, minutes_ago=0)
+    await _record_sleep(callback, "sleep_end", minutes_ago=0, is_night=True)
 
 
 # ===== Вспомогательная функция записи сна =====
-async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_ago: int, is_night: bool = False, **_):
+async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_ago: int, is_night: bool = False):
     user_id = callback.from_user.id
     user = get_user(user_id)
     if not user:
@@ -445,7 +461,6 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
         )
         await callback.message.edit_text(text, parse_mode="HTML")
     else:
-        # Найти последний sleep_start и посчитать длительность
         last_start = get_last_sleep_start(user_id)
         duration_str = ""
         if last_start:
@@ -457,6 +472,7 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
         text = (
             f"✅ {name} проснулся в <b>{local}</b> ({kind}).{duration_str}\n\n"
             f"{schedule_text}"
+            f"\n📅 Хочешь полный план дня? Зайди в «😴 Сон» → «📅 План дня»."
         )
         await callback.message.edit_text(text, parse_mode="HTML")
 

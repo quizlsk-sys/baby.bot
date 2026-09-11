@@ -29,12 +29,20 @@ def name_skip_keyboard():
 
 def sleep_main_keyboard():
     buttons = [
+        [InlineKeyboardButton(text="📅 План дня", callback_data="sleep_plan")],
         [InlineKeyboardButton(text="☀️ Дневной сон", callback_data="sleep_day_menu"),
          InlineKeyboardButton(text="🌙 Ночной сон", callback_data="sleep_night_menu")],
         [InlineKeyboardButton(text="🌙 Ночное пробуждение", callback_data="night_wake")],
         [InlineKeyboardButton(text="📋 Сны за сегодня", callback_data="sleep_list")],
         [InlineKeyboardButton(text="⌨️ Ввести вручную", callback_data="sleep_manual")],
         [InlineKeyboardButton(text="↩️ Отменить последнее", callback_data="sleep_undo")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def plan_back_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="sleep_back")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

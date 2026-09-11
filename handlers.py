@@ -13,7 +13,7 @@ from database import (
     get_answer_by_id, get_connection, update_user_consent,
     update_user_brief_time, update_user_zodiac, update_user_brief_enabled,
     delete_last_event, delete_sleep, update_user_child_name,
-    get_last_sleep_start,
+    get_last_sleep_start, update_last_brief_message_id,
 )
 from states import UserStates
 from keyboards import (
@@ -40,7 +40,6 @@ MAIN_BUTTONS = [
 ]
 
 
-# ===== Вспомогательные функции =====
 def _child_name(user) -> str:
     if user and user.get("child_name"):
         return user["child_name"]
@@ -164,7 +163,6 @@ async def cmd_delete_me(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Инструкция при старте =====
 async def send_welcome_instructions(message: Message, user=None):
     name = _child_name(user) if user else "Малыш"
     text = (
@@ -174,8 +172,8 @@ async def send_welcome_instructions(message: Message, user=None):
         f"Проверь, что стоит твой город — чтобы все отметки сна и брифинг "
         f"приходили в правильное время.\n\n"
         f"2️⃣ <b>🌅 Утренний брифинг</b>\n"
-        f"Каждое утро бот присылает персональное сообщение: "
-        f"приветствие, идею для занятия с {name}, пожелание и гороскоп.\n"
+        f"Каждое утро бот присылает персональный разбор ночи, план на день "
+        f"и одну рекомендацию.\n"
         f"👉 Кнопка «🌅 Брифинг» внизу.\n\n"
         f"💡 <b>Остальные кнопки:</b>\n"
         f"😴 <b>Сон</b> — отметка сна {name} + 📅 план дня\n"
@@ -252,7 +250,6 @@ async def process_consent_decline(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
 
 
-# ===== Дата рождения =====
 @router.message(UserStates.waiting_birthday)
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
@@ -371,7 +368,6 @@ async def cb_sleep_plan(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== ДНЕВНОЙ СОН =====
 @router.callback_query(F.data == "sleep_day_menu")
 async def cb_day_menu(callback: types.CallbackQuery):
     user = get_user(callback.from_user.id)
@@ -415,7 +411,6 @@ async def cb_day_end_30(callback: types.CallbackQuery):
     await _record_sleep(callback, "sleep_end", minutes_ago=30, is_night=False)
 
 
-# ===== НОЧНОЙ СОН =====
 @router.callback_query(F.data == "sleep_night_menu")
 async def cb_night_menu(callback: types.CallbackQuery):
     user = get_user(callback.from_user.id)
@@ -439,7 +434,6 @@ async def cb_night_end_now(callback: types.CallbackQuery):
     await _record_sleep(callback, "sleep_end", minutes_ago=0, is_night=True)
 
 
-# ===== Вспомогательная функция записи сна =====
 async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_ago: int, is_night: bool = False):
     user_id = callback.from_user.id
     user = get_user(user_id)
@@ -479,7 +473,6 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
     await callback.answer()
 
 
-# ===== НОЧНОЕ ПРОБУЖДЕНИЕ =====
 @router.callback_query(F.data == "night_wake")
 async def cb_night_wake(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -506,7 +499,6 @@ async def cb_night_wake(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== СПИСОК СНОВ ЗА СЕГОДНЯ + УДАЛЕНИЕ =====
 @router.callback_query(F.data == "sleep_list")
 async def cb_sleep_list(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -569,7 +561,6 @@ async def cb_delete_sleep(callback: types.CallbackQuery):
     await callback.answer("Удалено")
 
 
-# ===== ОТМЕНА ПОСЛЕДНЕГО =====
 @router.callback_query(F.data == "sleep_undo")
 async def cb_sleep_undo(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -597,7 +588,6 @@ async def cb_sleep_undo(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== РУЧНОЙ ВВОД =====
 @router.callback_query(F.data == "sleep_manual")
 async def cb_sleep_manual(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -659,7 +649,6 @@ async def process_manual_time(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Статистика =====
 @router.message(F.text == "📊 Статистика")
 async def stats_request(message: Message):
     await message.answer("Выбери период:", reply_markup=stats_period_keyboard())
@@ -678,7 +667,6 @@ async def stats_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== Идея дня =====
 @router.message(F.text == "💡 Идея дня")
 async def idea_of_day(message: Message):
     user_id = message.from_user.id
@@ -694,7 +682,6 @@ async def idea_of_day(message: Message):
     await message.answer(f"💡 Идея дня:\n\n{idea}")
 
 
-# ===== Полезное =====
 @router.message(F.text == "📚 Полезное")
 async def ask_question(message: Message, state: FSMContext):
     await state.clear()
@@ -777,7 +764,6 @@ async def process_question(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Самочувствие мамы =====
 @router.message(F.text == "❤️ Моё самочувствие")
 async def mom_mood(message: Message):
     await message.answer("Как ты себя чувствуешь?", reply_markup=mood_keyboard())
@@ -796,7 +782,6 @@ async def mood_callback(callback: types.CallbackQuery):
         await callback.message.answer("Помни: отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
 
 
-# ===== Часовой пояс =====
 @router.message(F.text == "🌍 Часовой пояс")
 async def timezone_menu(message: Message):
     user = get_user(message.from_user.id)
@@ -845,7 +830,6 @@ async def timezone_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== БРИФИНГ =====
 @router.message(F.text == "🌅 Брифинг")
 async def brief_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -863,8 +847,7 @@ async def brief_menu(message: Message, state: FSMContext):
         f"Статус: {'включён ✅' if user['brief_enabled'] else 'выключен 🔕'}\n"
         f"Время: {user['morning_brief_time']}\n"
         f"Знак зодиака: {zodiac_label or 'не указан'}\n\n"
-        f"Каждое утро бот будет присылать тёплое персональное сообщение: "
-        f"приветствие, идею дня, пожелание и гороскоп.",
+        f"Каждое утро бот присылает: разбор ночи, план на день и одну рекомендацию.",
         reply_markup=brief_menu_keyboard(
             user["brief_enabled"],
             user["morning_brief_time"],
@@ -954,5 +937,29 @@ async def brief_back(callback: types.CallbackQuery):
         f"Время: {user['morning_brief_time']}\n"
         f"Знак зодиака: {zodiac_label or 'не указан'}",
         reply_markup=brief_menu_keyboard(user["brief_enabled"], user["morning_brief_time"], zodiac_label)
+    )
+    await callback.answer()
+
+
+# ===== Фидбек на брифинг =====
+@router.callback_query(F.data == "brief_feedback_good")
+async def brief_feedback_good(callback: types.CallbackQuery):
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer("Спасибо за отзыв! 🌸 Рада, что полезно.")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "brief_feedback_bad")
+async def brief_feedback_bad(callback: types.CallbackQuery):
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(
+        "Поняла, спасибо. Постараюсь быть точнее. "
+        "Если есть пожелания — напиши в свободной форме."
     )
     await callback.answer()

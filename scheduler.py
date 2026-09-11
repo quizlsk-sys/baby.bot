@@ -1,13 +1,15 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
 from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import (
     get_users_for_brief, get_user, get_idea_by_age, get_events_since,
-    update_last_brief_date
+    update_last_brief_date, get_day_events, update_last_brief_message_id,
+    get_events_between,
 )
-from utils import get_child_age_days, get_user_tz, now_in_user_tz
-from ai_helper import generate_text
+from utils import get_child_age_days, get_user_tz, now_in_user_tz, get_age_params, _format_hm
+from ai_helper import generate_briefing
 from backup import send_backup
 from config import ADMIN_ID
 
@@ -18,7 +20,66 @@ scheduler = AsyncIOScheduler()
 def _count_night_wakes(user_id: int, hours: int = 12) -> int:
     since = int((datetime.now() - timedelta(hours=hours)).timestamp())
     events = get_events_since(user_id, since)
-    return sum(1 for e in events if e["event_type"] == "sleep_end")
+    return sum(1 for e in events if e["event_type"] == "night_wake")
+
+
+def _analyze_night(user_id: int, tz):
+    """Возвращает (sleep_min, wake_count, wake_time_str) за последнюю ночь."""
+    now_local = datetime.now(tz)
+    yesterday_evening = (now_local - timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
+    today_morning = now_local.replace(hour=11, minute=0, second=0, microsecond=0)
+    start_ts = int(yesterday_evening.timestamp())
+    end_ts = int(today_morning.timestamp())
+
+    events = get_events_between(user_id, start_ts, end_ts)
+    events.sort(key=lambda e: e["timestamp"])
+
+    total_min = 0
+    current_start = None
+    wake_count = 0
+    last_wake_ts = None
+
+    for e in events:
+        if e["event_type"] == "sleep_start":
+            current_start = e["timestamp"]
+        elif e["event_type"] == "sleep_end":
+            if current_start:
+                total_min += (e["timestamp"] - current_start) // 60
+                current_start = None
+            last_wake_ts = e["timestamp"]
+        elif e["event_type"] == "night_wake":
+            wake_count += 1
+
+    if last_wake_ts:
+        wake_time_str = datetime.fromtimestamp(last_wake_ts, tz).strftime("%H:%M")
+    else:
+        wake_time_str = now_local.strftime("%H:%M")
+
+    return total_min, wake_count, wake_time_str
+
+
+def _get_today_plan_summary(user_id: int, tz):
+    """Возвращает (naps_count, first_nap_str, bedtime_str)."""
+    age_days = get_child_age_days(user_id)
+    wake_min, wake_max, sleep_count, dur_min, dur_max, bedtime_hour = get_age_params(age_days)
+
+    today = datetime.now(tz).date()
+    events = get_day_events(user_id, today)
+    sleep_ends = [e for e in events if e["event_type"] == "sleep_end"]
+
+    if sleep_ends:
+        wake_ts = max(e["timestamp"] for e in sleep_ends)
+    else:
+        wake_ts = int(datetime.now(tz).timestamp())
+
+    wake_local = datetime.fromtimestamp(wake_ts, tz)
+    avg_wake = (wake_min + wake_max) // 2
+    first_nap = wake_local + timedelta(minutes=avg_wake)
+    bedtime = wake_local.replace(hour=bedtime_hour, minute=0, second=0, microsecond=0)
+    if bedtime <= wake_local:
+        bedtime = bedtime + timedelta(days=1)
+
+    return sleep_count, first_nap.strftime("%H:%M"), bedtime.strftime("%H:%M")
 
 
 async def send_brief(bot: Bot, user_id: int):
@@ -26,42 +87,55 @@ async def send_brief(bot: Bot, user_id: int):
     if not user:
         return
 
+    tz = get_user_tz(user_id)
     age_days = get_child_age_days(user_id) or 0
     age_months = age_days // 30
-    zodiac = user.get("zodiac") or "не указан"
-    night_wakes = _count_night_wakes(user_id, hours=12)
-    fallback_idea = get_idea_by_age(age_days)
+    name = user.get("child_name") or "Малыш"
 
-    prompt = (
-        f"Составь короткое утреннее сообщение для мамы малыша. Используй ТЁПЛЫЙ, дружелюбный тон на русском языке.\n\n"
-        f"Данные:\n"
-        f"- Возраст ребёнка: примерно {age_months} мес.\n"
-        f"- Знак зодиака мамы: {zodiac}\n"
-        f"- Количество ночных пробуждений ребёнка: {night_wakes}\n\n"
-        f"В сообщении должно быть 4 части (каждую начинай с эмодзи):\n"
-        f"1. ☀️ Короткое тёплое приветствие.\n"
-        f"2. 💡 Одна конкретная идея для игры/развития с ребёнком на сегодня (с учётом возраста).\n"
-        f"3. 💛 Пожелание или слова поддержки маме на день.\n"
-        f"4. ♈ Короткий шуточный гороскоп на день для указанного знака зодиака (1–2 предложения).\n\n"
-        f"Не используй заголовки и markdown-разметку, только текст. Общая длина — не более 900 символов."
+    night_min, wakes, wake_str = _analyze_night(user_id, tz)
+    naps_count, first_nap_str, bedtime_str = _get_today_plan_summary(user_id, tz)
+
+    ai_text = generate_briefing(
+        child_name=name,
+        age_months=age_months,
+        night_sleep_min=night_min,
+        night_wakes=wakes,
+        wake_time_str=wake_str,
+        naps_count=naps_count,
+        first_nap_str=first_nap_str,
+        bedtime_str=bedtime_str,
     )
 
-    text = generate_text(prompt)
-
-    if text:
-        message = f"🌅 Доброе утро!\n\n{text}"
-    else:
-        message = (
-            f"🌅 Доброе утро!\n\n"
-            f"☀️ Пусть сегодняшний день будет спокойным и радостным.\n\n"
-            f"💡 Идея на сегодня: {fallback_idea}\n\n"
-            f"💛 Не забывай отдыхать, когда малыш спит.\n\n"
-            f"♈ Хорошего дня!"
+    if not ai_text:
+        ai_text = (
+            f"🌙 НОЧЬ\n"
+            f"{name} спал {night_min // 60} ч {night_min % 60} мин, "
+            f"пробуждений: {wakes}. Подъём в {wake_str}.\n\n"
+            f"📅 СЕГОДНЯ\n"
+            f"По плану {naps_count} снов, первый около {first_nap_str}, "
+            f"укладывание на ночь в {bedtime_str}.\n\n"
+            f"🎯 ФОКУС\n"
+            f"Следите за признаками усталости и старайтесь укладывать вовремя."
         )
 
+    header = f"☀️ <b>Доброе утро!</b>\n\n"
+    body = ai_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    full_message = header + body
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👍 Полезно", callback_data="brief_feedback_good"),
+            InlineKeyboardButton(text="👎 Не полезно", callback_data="brief_feedback_bad"),
+        ]
+    ])
+
     try:
-        await bot.send_message(user_id, message)
+        msg = await bot.send_message(user_id, full_message, parse_mode="HTML", reply_markup=keyboard)
         update_last_brief_date(user_id, now_in_user_tz(user_id).strftime("%Y-%m-%d"))
+        try:
+            update_last_brief_message_id(user_id, msg.message_id)
+        except Exception:
+            pass
     except Exception as e:
         print(f"Ошибка отправки брифинга пользователю {user_id}: {e}")
 
@@ -85,7 +159,6 @@ async def check_briefs(bot: Bot):
 
 
 async def daily_backup(bot: Bot):
-    """Ежедневный бэкап базы в Telegram."""
     if ADMIN_ID == 0:
         return
     print("📦 Запускаю ежедневный бэкап...")
@@ -93,8 +166,6 @@ async def daily_backup(bot: Bot):
 
 
 def start_brief_scheduler(bot: Bot):
-    """Запускает фоновые задачи: проверка брифингов и ежедневный бэкап."""
-    # Проверка брифингов раз в минуту
     scheduler.add_job(
         check_briefs,
         "interval",
@@ -104,7 +175,6 @@ def start_brief_scheduler(bot: Bot):
         replace_existing=True,
     )
 
-    # Ежедневный бэкап в 03:00 UTC (это 10:00 по Красноярску)
     if ADMIN_ID:
         scheduler.add_job(
             daily_backup,
@@ -115,7 +185,7 @@ def start_brief_scheduler(bot: Bot):
             id="daily_backup",
             replace_existing=True,
         )
-        print(f"✅ Планировщик бэкапа запущен (каждый день в 03:00 UTC, ID={ADMIN_ID}).")
+        print(f"✅ Планировщик бэкапа запущен (в 03:00 UTC, ID={ADMIN_ID}).")
 
     scheduler.start()
     print("✅ Планировщик брифингов запущен.")

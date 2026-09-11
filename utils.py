@@ -40,26 +40,24 @@ def _format_hm(minutes: int) -> str:
 
 
 def get_age_params(age_days):
-    """Возвращает параметры по возрасту:
-    (wake_min, wake_max, sleep_count, dur_min, dur_max, bedtime_hour)."""
+    """Возвращает (wake_min, wake_max, sleep_count, dur_min, dur_max, bedtime_hour)."""
     if age_days is None:
         age_days = 180
-    if age_days < 90:       # 0–3 мес
+    if age_days < 90:
         return (45, 90, 5, 30, 90, 21)
-    elif age_days < 180:    # 3–6 мес
+    elif age_days < 180:
         return (75, 120, 4, 60, 120, 20)
-    elif age_days < 270:    # 6–9 мес
+    elif age_days < 270:
         return (120, 180, 3, 60, 90, 20)
-    elif age_days < 365:    # 9–12 мес
+    elif age_days < 365:
         return (180, 240, 2, 60, 90, 20)
-    elif age_days < 550:    # 1–1.5 года
+    elif age_days < 550:
         return (210, 270, 2, 90, 120, 20)
-    else:                   # 1.5+ года
+    else:
         return (240, 300, 1, 90, 150, 20)
 
 
 def get_wake_window(age_days: int):
-    """Возвращает (min, max) — окно бодрствования по возрасту."""
     lo, hi, *_ = get_age_params(age_days)
     return (lo, hi)
 
@@ -71,7 +69,6 @@ def get_average_wake_time(user_id: int, days=3):
 
 
 def recalc_schedule(user_id: int, wake_timestamp: int):
-    """Пересчёт окна бодрствования после пробуждения."""
     age_days = get_child_age_days(user_id)
     lo, hi = get_wake_window(age_days)
 
@@ -90,7 +87,6 @@ def recalc_schedule(user_id: int, wake_timestamp: int):
 
 
 def build_day_plan(user_id: int):
-    """Строит план дня от последнего пробуждения. Возвращает текст."""
     user = get_user(user_id)
     if not user:
         return "Сначала настрой бота через /start"
@@ -100,7 +96,6 @@ def build_day_plan(user_id: int):
     age_days = get_child_age_days(user_id)
     wake_min, wake_max, sleep_count, dur_min, dur_max, bedtime_hour = get_age_params(age_days)
 
-    # Ищем последнее пробуждение сегодня
     today = now_local.date()
     events = get_day_events(user_id, today)
     sleep_ends = [e for e in events if e["event_type"] == "sleep_end"]
@@ -110,14 +105,10 @@ def build_day_plan(user_id: int):
         wake_ts = int(now_local.timestamp())
 
     wake_local = datetime.fromtimestamp(wake_ts, tz)
-
-    # Средние значения
     avg_wake = (wake_min + wake_max) // 2
     avg_sleep = (dur_min + dur_max) // 2
-
     name = user.get("child_name") or "Малыш"
 
-    # Время укладывания на ночь (сегодня или завтра)
     bedtime = wake_local.replace(hour=bedtime_hour, minute=0, second=0, microsecond=0)
     if bedtime <= wake_local:
         bedtime = bedtime + timedelta(days=1)
@@ -134,7 +125,6 @@ def build_day_plan(user_id: int):
         if nap_start >= bedtime:
             break
 
-        # Бодрствование перед сном
         awake_before = int((nap_start - cursor).total_seconds() // 60)
         lines.append("")
         lines.append(
@@ -143,7 +133,6 @@ def build_day_plan(user_id: int):
         )
         total_awake_min += awake_before
 
-        # Сон
         nap_dur = avg_sleep
         nap_end = nap_start + timedelta(minutes=nap_dur)
         if nap_end > bedtime:
@@ -159,7 +148,6 @@ def build_day_plan(user_id: int):
         total_sleep_min += nap_dur
         cursor = nap_end
 
-    # Бодрствование перед ночью
     if cursor < bedtime:
         awake_before_night = int((bedtime - cursor).total_seconds() // 60)
         lines.append("")

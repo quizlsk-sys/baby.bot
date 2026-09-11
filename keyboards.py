@@ -115,7 +115,6 @@ def timezone_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# ===== База знаний =====
 CATEGORIES = {
     "сон": "😴 Сон",
     "прикорм": "🍎 Прикорм",
@@ -150,7 +149,6 @@ def questions_keyboard(questions):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# ===== Брифинг =====
 def brief_menu_keyboard(enabled: bool, time_str: str, zodiac: str):
     toggle_text = "🔕 Выключить брифинг" if enabled else "🔔 Включить брифинг"
     buttons = [

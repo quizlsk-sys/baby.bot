@@ -476,3 +476,17 @@ def get_answer_by_id(knowledge_id: int):
     row = cur.fetchone()
     conn.close()
     return row[0] if row else "Ответ не найден."
+
+def delete_last_event(user_id: int):
+    """Удаляет последнее событие пользователя (для кнопки «Отменить»)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, event_type, timestamp FROM events WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,))
+    row = cur.fetchone()
+    if row:
+        cur.execute("DELETE FROM events WHERE id = ?", (row[0],))
+        conn.commit()
+        conn.close()
+        return {"id": row[0], "event_type": row[1], "timestamp": row[2]}
+    conn.close()
+    return None

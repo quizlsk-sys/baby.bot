@@ -12,6 +12,7 @@ from database import (
     get_idea_by_age, answer_question, get_questions_by_category,
     get_answer_by_id, get_connection, update_user_consent,
     update_user_brief_time, update_user_zodiac, update_user_brief_enabled,
+    delete_last_event,
 )
 from states import UserStates
 from keyboards import (
@@ -38,7 +39,6 @@ MAIN_BUTTONS = [
 
 # ===== Вспомогательные функции =====
 def format_birthday_display(iso_str: str) -> str:
-    """Преобразует дату из БД (YYYY-MM-DD) в формат для показа (DD-MM-YYYY)."""
     if not iso_str:
         return ""
     try:
@@ -97,19 +97,19 @@ async def send_welcome_instructions(message: Message):
     text = (
         "🎉 Отлично, всё настроено!\n\n"
         "📋 <b>Что можно настроить (по желанию):</b>\n\n"
-        "1️⃣ <b>🌅 Утренний брифинг</b>\n"
-        "Каждое утро бот будет присылать тёплое сообщение от ИИ: "
+        "1️⃣ <b>🌍 Часовой пояс</b>\n"
+        "По умолчанию стоит Красноярск. Если ты в другом городе — "
+        "нажми «🌍 Часовой пояс» и выбери свой, чтобы все отметки сна и брифинг "
+        "приходили в правильное время.\n\n"
+        "2️⃣ <b>🌅 Утренний брифинг</b>\n"
+        "Каждое утро бот присылает тёплое сообщение от ИИ: "
         "приветствие, идею для занятия с малышом, пожелание и гороскоп.\n"
         "👉 Нажми кнопку «🌅 Брифинг» внизу → там можно:\n"
         "   • Включить/выключить\n"
         "   • Выбрать удобное время (например, 08:00)\n"
         "   • Указать свой знак зодиака\n\n"
-        "2️⃣ <b>🌍 Часовой пояс</b>\n"
-        "По умолчанию стоит Красноярск. Если ты в другом городе — "
-        "нажми «🌍 Часовой пояс» и выбери свой, чтобы все отметки сна и брифинг "
-        "приходили в правильное время.\n\n"
         "💡 <b>Остальные кнопки:</b>\n"
-        "😴 <b>Сон</b> — отметки: уснул / проснулся / ночное пробуждение\n"
+        "😴 <b>Сон</b> — отметки: заснул / проснулся / 🌙 ночное пробуждение\n"
         "📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
         "💡 <b>Идея дня</b> — случайная идея для занятия с малышом\n"
         "📚 <b>Полезное</b> — ответы на вопросы (сон, прикорм, здоровье…)\n"
@@ -179,7 +179,6 @@ async def process_consent_decline(callback: types.CallbackQuery, state: FSMConte
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
 
-    # Проверяем формат ДД-ММ-ГГГГ
     if not re.match(r'^\d{2}-\d{2}-\d{4}$', text):
         await message.answer("Пожалуйста, введи дату в формате ДД-ММ-ГГГГ (например, 15-01-2024)")
         return
@@ -190,7 +189,6 @@ async def process_birthday(message: Message, state: FSMContext):
         await message.answer("Неверная дата. Попробуй ещё раз в формате ДД-ММ-ГГГГ")
         return
 
-    # Сохраняем в БД в формате ISO (ГГГГ-ММ-ДД) для совместимости
     iso_str = parsed.strftime("%Y-%m-%d")
 
     user_id = message.from_user.id
@@ -217,7 +215,14 @@ async def sleep_menu(message: Message, state: FSMContext):
     if not get_user(message.from_user.id):
         await message.answer("Сначала настрой бота через /start")
         return
-    await message.answer("Что отметить?", reply_markup=sleep_keyboard())
+    await message.answer(
+        "Что отметить?\n\n"
+        "😴 <b>Заснул</b> — начало сна\n"
+        "👶 <b>Проснулся</b> — конец сна\n"
+        "🌙 <b>Ночное пробуждение</b> — проснулся ночью и снова уснул",
+        parse_mode="HTML",
+        reply_markup=sleep_keyboard()
+    )
 
 
 @router.callback_query(F.data == "sleep_start_now")
@@ -229,7 +234,11 @@ async def cb_sleep_start_now(callback: types.CallbackQuery):
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_start", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
-    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>заснул в {local}</b>.\n\n"
+        f"Когда проснётся — нажми «😴 Сон» → «👶 Проснулся».",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -243,7 +252,10 @@ async def cb_sleep_end_now(callback: types.CallbackQuery):
     add_event(user_id, "sleep_end", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, now)
-    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>проснулся в {local}</b>.\n\n{schedule_text}",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -256,7 +268,11 @@ async def cb_sleep_start_15(callback: types.CallbackQuery):
     ts = int((datetime.now() - timedelta(minutes=15)).timestamp())
     add_event(user_id, "sleep_start", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
-    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>заснул в {local}</b> (15 минут назад).\n\n"
+        f"Когда проснётся — нажми «😴 Сон» → «👶 Проснулся».",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -270,7 +286,10 @@ async def cb_sleep_end_15(callback: types.CallbackQuery):
     add_event(user_id, "sleep_end", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>проснулся в {local}</b> (15 минут назад).\n\n{schedule_text}",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -283,7 +302,11 @@ async def cb_sleep_start_30(callback: types.CallbackQuery):
     ts = int((datetime.now() - timedelta(minutes=30)).timestamp())
     add_event(user_id, "sleep_start", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
-    await callback.message.edit_text(f"✅ Отметил: уснул в {local}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>заснул в {local}</b> (30 минут назад).\n\n"
+        f"Когда проснётся — нажми «😴 Сон» → «👶 Проснулся».",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -297,7 +320,10 @@ async def cb_sleep_end_30(callback: types.CallbackQuery):
     add_event(user_id, "sleep_end", ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
     schedule_text = recalc_schedule(user_id, ts)
-    await callback.message.edit_text(f"✅ Отметил: проснулся в {local}\n\n{schedule_text}")
+    await callback.message.edit_text(
+        f"✅ Записал: <b>проснулся в {local}</b> (30 минут назад).\n\n{schedule_text}",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -318,9 +344,37 @@ async def cb_night_wake(callback: types.CallbackQuery):
     count = sum(1 for e in events if e["event_type"] == "night_wake")
 
     await callback.message.edit_text(
-        f"🌙 Отметил ночное пробуждение в {local}.\n"
+        f"🌙 Записал: <b>ночное пробуждение в {local}</b>.\n"
         f"Сегодня уже {count} пробуждени{'е' if count == 1 else 'я' if 2 <= count <= 4 else 'й'}.\n\n"
-        f"Если хотите отметить ещё — снова нажмите «😴 Сон»."
+        f"Если хотите отметить ещё — снова нажмите «😴 Сон».",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sleep_undo")
+async def cb_sleep_undo(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if not get_user(user_id):
+        await callback.answer("Сначала настрой бота через /start", show_alert=True)
+        return
+    last = delete_last_event(user_id)
+    if not last:
+        await callback.message.edit_text("❌ Нечего отменять — нет последних записей.")
+        await callback.answer()
+        return
+
+    type_ru = {
+        "sleep_start": "засыпание",
+        "sleep_end": "пробуждение",
+        "night_wake": "ночное пробуждение",
+        "mom_mood": "самочувствие",
+    }.get(last["event_type"], last["event_type"])
+    local = to_user_tz(user_id, last["timestamp"]).strftime('%H:%M')
+
+    await callback.message.edit_text(
+        f"↩️ Отменил последнее действие:\n"
+        f"«{type_ru} в {local}» больше не учитывается."
     )
     await callback.answer()
 
@@ -332,8 +386,11 @@ async def cb_sleep_manual(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
     await callback.message.edit_text(
-        "Введи время в формате ЧЧ:ММ (например, 14:30).\n"
-        "Укажи, что это: 'уснул' или 'проснулся' — например, 'уснул 14:30'"
+        "Введи время в формате ЧЧ:ММ (например, 14:30).\n\n"
+        "Укажи, что это:\n"
+        "• <b>'уснул 14:30'</b> — если это начало сна\n"
+        "• <b>'проснулся 14:30'</b> — если это конец сна",
+        parse_mode="HTML"
     )
     await state.set_state(UserStates.waiting_manual_time)
     await callback.answer()
@@ -359,10 +416,22 @@ async def process_manual_time(message: Message, state: FSMContext):
         await message.answer("Неверный формат времени. Используй ЧЧ:ММ")
         return
     add_event(user_id, event_type, ts)
-    await message.answer(f"✅ Отметил: {'уснул' if event_type == 'sleep_start' else 'проснулся'} в {time_str}")
-    if event_type == "sleep_end":
+
+    action_ru = "заснул" if event_type == "sleep_start" else "проснулся"
+    local_str = to_user_tz(user_id, ts).strftime('%H:%M')
+
+    if event_type == "sleep_start":
+        await message.answer(
+            f"✅ Записал: <b>заснул в {local_str}</b>.\n\n"
+            f"Когда проснётся — нажми «😴 Сон» → «👶 Проснулся».",
+            parse_mode="HTML"
+        )
+    else:
         schedule_text = recalc_schedule(user_id, ts)
-        await message.answer(schedule_text)
+        await message.answer(
+            f"✅ Записал: <b>проснулся в {local_str}</b>.\n\n{schedule_text}",
+            parse_mode="HTML"
+        )
     await state.clear()
 
 
@@ -511,8 +580,10 @@ async def timezone_menu(message: Message):
         await message.answer("Сначала настрой бота через /start")
         return
     await message.answer(
-        f"Текущий часовой пояс: {user['timezone']}\n"
-        f"Выбери новый:",
+        f"🌍 <b>Текущий часовой пояс:</b> {user['timezone']}\n\n"
+        f"⚠️ Если он не совпадает с твоим городом — все отметки сна и брифинг "
+        f"будут приходить в неправильное время. Выбери свой 👇",
+        parse_mode="HTML",
         reply_markup=timezone_keyboard()
     )
 
@@ -520,13 +591,47 @@ async def timezone_menu(message: Message):
 @router.callback_query(F.data.startswith("tz_"))
 async def timezone_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    tz = callback.data.replace("tz_", "", 1)
+    data = callback.data.replace("tz_", "", 1)
+
+    if data == "check":
+        user = get_user(user_id)
+        if user:
+            await callback.message.edit_text(
+                f"🌍 Текущий часовой пояс: {user['timezone']}\n\n"
+                f"Если всё верно — можешь пользоваться ботом. Если нет — выбери свой:",
+                reply_markup=timezone_keyboard()
+            )
+        await callback.answer()
+        return
+
+    tz = data
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("UPDATE users SET timezone = ? WHERE user_id = ?", (tz, user_id))
     conn.commit()
     conn.close()
-    await callback.message.answer(f"✅ Часовой пояс изменён на: {tz}")
+
+    # Формируем человекочитаемое название
+    tz_names = {
+        "Asia/Krasnoyarsk": "Красноярск (UTC+7)",
+        "Europe/Moscow": "Москва (UTC+3)",
+        "Asia/Novosibirsk": "Новосибирск (UTC+7)",
+        "Asia/Irkutsk": "Иркутск (UTC+8)",
+        "Asia/Vladivostok": "Владивосток (UTC+10)",
+        "Europe/Kaliningrad": "Калининград (UTC+2)",
+        "Asia/Yekaterinburg": "Екатеринбург (UTC+5)",
+    }
+    label = tz_names.get(tz, tz)
+
+    # Сразу показываем текущее время в новом поясе — чтобы жена увидела разницу
+    now_local = now_in_user_tz(user_id).strftime('%H:%M')
+
+    await callback.message.edit_text(
+        f"✅ Часовой пояс изменён на: <b>{label}</b>\n\n"
+        f"Сейчас у тебя: <b>{now_local}</b>\n"
+        f"Если это совпадает с часами на телефоне — всё верно. 🌸",
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 

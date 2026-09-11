@@ -15,22 +15,23 @@ def consent_keyboard():
     buttons = [
         [InlineKeyboardButton(text="✅ Согласен", callback_data="consent_agree")],
         [InlineKeyboardButton(text="❌ Не согласен", callback_data="consent_decline")],
-        [InlineKeyboardButton(text="📄 Политика конфиденциальности", url="https://telegra.ph/Politika-konfidencialnosti-09-10-98")],
+        [InlineKeyboardButton(text="📄 Политика конфиденциальности", url="https://telegra.ph/ВАША-ССЫЛКА")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def sleep_keyboard():
-    """Всплывающее меню отметок сна."""
+    """Всплывающее меню отметок сна. Названия кнопок — явные."""
     buttons = [
-        [InlineKeyboardButton(text="😴 Уснул сейчас", callback_data="sleep_start_now"),
-         InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="sleep_end_now")],
-        [InlineKeyboardButton(text="⏰ Уснул 15 мин назад", callback_data="sleep_start_15"),
-         InlineKeyboardButton(text="⏰ Проснулся 15 мин назад", callback_data="sleep_end_15")],
-        [InlineKeyboardButton(text="⏰ Уснул 30 мин назад", callback_data="sleep_start_30"),
-         InlineKeyboardButton(text="⏰ Проснулся 30 мин назад", callback_data="sleep_end_30")],
+        [InlineKeyboardButton(text="😴 Заснул только что", callback_data="sleep_start_now"),
+         InlineKeyboardButton(text="👶 Проснулся только что", callback_data="sleep_end_now")],
+        [InlineKeyboardButton(text="😴 Заснул 15 минут назад", callback_data="sleep_start_15"),
+         InlineKeyboardButton(text="👶 Проснулся 15 минут назад", callback_data="sleep_end_15")],
+        [InlineKeyboardButton(text="😴 Заснул 30 минут назад", callback_data="sleep_start_30"),
+         InlineKeyboardButton(text="👶 Проснулся 30 минут назад", callback_data="sleep_end_30")],
         [InlineKeyboardButton(text="🌙 Ночное пробуждение", callback_data="night_wake")],
         [InlineKeyboardButton(text="⌨️ Ввести время вручную", callback_data="sleep_manual")],
+        [InlineKeyboardButton(text="↩️ Отменить последнее действие", callback_data="sleep_undo")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -62,6 +63,7 @@ def timezone_keyboard():
         [InlineKeyboardButton(text="Владивосток (UTC+10)", callback_data="tz_Asia/Vladivostok")],
         [InlineKeyboardButton(text="Калининград (UTC+2)", callback_data="tz_Europe/Kaliningrad")],
         [InlineKeyboardButton(text="Екатеринбург (UTC+5)", callback_data="tz_Asia/Yekaterinburg")],
+        [InlineKeyboardButton(text="◀️ Проверить ещё раз", callback_data="tz_check")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

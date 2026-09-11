@@ -3,10 +3,11 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 def main_keyboard():
     buttons = [
-        [KeyboardButton(text="😴 Сон"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="😴 Уснул"), KeyboardButton(text="👶 Проснулся")],
+        [KeyboardButton(text="📅 План дня"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="💡 Идея дня"), KeyboardButton(text="📚 Полезное")],
         [KeyboardButton(text="🌅 Брифинг"), KeyboardButton(text="❤️ Моё самочувствие")],
-        [KeyboardButton(text="🌍 Часовой пояс")],
+        [KeyboardButton(text="😴 Сон"), KeyboardButton(text="🌍 Часовой пояс")],
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 

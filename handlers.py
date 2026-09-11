@@ -33,10 +33,11 @@ from ai_helper import generate_text
 router = Router()
 
 MAIN_BUTTONS = [
-    "😴 Сон", "📊 Статистика",
+    "😴 Уснул", "👶 Проснулся",
+    "📅 План дня", "📊 Статистика",
     "💡 Идея дня", "📚 Полезное",
     "🌅 Брифинг", "❤️ Моё самочувствие",
-    "🌍 Часовой пояс",
+    "😴 Сон", "🌍 Часовой пояс",
 ]
 
 
@@ -175,8 +176,10 @@ async def send_welcome_instructions(message: Message, user=None):
         f"Каждое утро бот присылает персональный разбор ночи, план на день "
         f"и одну рекомендацию.\n"
         f"👉 Кнопка «🌅 Брифинг» внизу.\n\n"
-        f"💡 <b>Остальные кнопки:</b>\n"
-        f"😴 <b>Сон</b> — отметка сна {name} + 📅 план дня\n"
+        f"💡 <b>Основные кнопки:</b>\n"
+        f"😴 <b>Уснул</b> / 👶 <b>Проснулся</b> — быстрая отметка в один клик\n"
+        f"📅 <b>План дня</b> — расписание сна {name} на сегодня\n"
+        f"😴 <b>Сон</b> — расширенные отметки (15/30 мин назад, ночной сон, список снов)\n"
         f"📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
         f"💡 <b>Идея дня</b> — случайная идея для занятия\n"
         f"📚 <b>Полезное</b> — ответы на вопросы\n"
@@ -324,7 +327,70 @@ async def process_child_name_change(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== СОН: главное меню =====
+# ===== БЫСТРЫЕ КНОПКИ: Уснул / Проснулся =====
+@router.message(F.text == "😴 Уснул")
+async def quick_sleep_start(message: Message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
+    if not user:
+        await message.answer("Сначала настрой бота через /start")
+        return
+    name = _child_name(user)
+    now = int(datetime.now().timestamp())
+    add_event(user_id, "sleep_start", now)
+    local = now_in_user_tz(user_id).strftime('%H:%M')
+    await message.answer(
+        f"✅ Записал: <b>{name} заснул в {local}</b>.\n\n"
+        f"Когда проснётся — нажми «👶 Проснулся».",
+        parse_mode="HTML"
+    )
+
+
+@router.message(F.text == "👶 Проснулся")
+async def quick_sleep_end(message: Message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
+    if not user:
+        await message.answer("Сначала настрой бота через /start")
+        return
+    name = _child_name(user)
+    now = int(datetime.now().timestamp())
+    add_event(user_id, "sleep_end", now)
+    local = now_in_user_tz(user_id).strftime('%H:%M')
+
+    # Длительность прошедшего сна
+    last_start = get_last_sleep_start(user_id)
+    duration_str = ""
+    if last_start:
+        dur_min = (now - last_start["timestamp"]) // 60
+        if dur_min > 0:
+            duration_str = f"\n😴 {name} поспал: {_format_hm(dur_min)}."
+
+    schedule_text = recalc_schedule(user_id, now)
+    await message.answer(
+        f"✅ Записал: <b>{name} проснулся в {local}</b>.{duration_str}\n\n"
+        f"{schedule_text}"
+        f"\n📅 Хочешь полный план дня? Нажми «📅 План дня».",
+        parse_mode="HTML"
+    )
+
+
+# ===== БЫСТРАЯ КНОПКА: План дня =====
+@router.message(F.text == "📅 План дня")
+async def quick_day_plan(message: Message):
+    user_id = message.from_user.id
+    if not get_user(user_id):
+        await message.answer("Сначала настрой бота через /start")
+        return
+    plan_text = build_day_plan(user_id)
+    await message.answer(
+        plan_text + "\n\n<i>План строится по возрасту ребёнка и последнему пробуждению. "
+        "После каждого сна он пересчитывается.</i>",
+        parse_mode="HTML"
+    )
+
+
+# ===== СОН: главное меню (расширенное) =====
 @router.message(F.text == "😴 Сон")
 async def sleep_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -334,7 +400,8 @@ async def sleep_menu(message: Message, state: FSMContext):
         return
     await message.answer(
         "😴 <b>Раздел «Сон»</b>\n\n"
-        "Выбери, что отметить:",
+        "Здесь — расширенные отметки: 15/30 минут назад, ночной сон, "
+        "список снов и отмена.",
         parse_mode="HTML",
         reply_markup=sleep_main_keyboard()
     )
@@ -351,7 +418,6 @@ async def cb_sleep_back(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== ПЛАН ДНЯ =====
 @router.callback_query(F.data == "sleep_plan")
 async def cb_sleep_plan(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -466,7 +532,6 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
         text = (
             f"✅ {name} проснулся в <b>{local}</b> ({kind}).{duration_str}\n\n"
             f"{schedule_text}"
-            f"\n📅 Хочешь полный план дня? Зайди в «😴 Сон» → «📅 План дня»."
         )
         await callback.message.edit_text(text, parse_mode="HTML")
 
@@ -649,6 +714,7 @@ async def process_manual_time(message: Message, state: FSMContext):
     await state.clear()
 
 
+# ===== Статистика =====
 @router.message(F.text == "📊 Статистика")
 async def stats_request(message: Message):
     await message.answer("Выбери период:", reply_markup=stats_period_keyboard())
@@ -667,6 +733,7 @@ async def stats_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# ===== Идея дня =====
 @router.message(F.text == "💡 Идея дня")
 async def idea_of_day(message: Message):
     user_id = message.from_user.id
@@ -682,6 +749,7 @@ async def idea_of_day(message: Message):
     await message.answer(f"💡 Идея дня:\n\n{idea}")
 
 
+# ===== Полезное =====
 @router.message(F.text == "📚 Полезное")
 async def ask_question(message: Message, state: FSMContext):
     await state.clear()
@@ -764,6 +832,7 @@ async def process_question(message: Message, state: FSMContext):
     await state.clear()
 
 
+# ===== Самочувствие мамы =====
 @router.message(F.text == "❤️ Моё самочувствие")
 async def mom_mood(message: Message):
     await message.answer("Как ты себя чувствуешь?", reply_markup=mood_keyboard())
@@ -782,6 +851,7 @@ async def mood_callback(callback: types.CallbackQuery):
         await callback.message.answer("Помни: отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
 
 
+# ===== Часовой пояс =====
 @router.message(F.text == "🌍 Часовой пояс")
 async def timezone_menu(message: Message):
     user = get_user(message.from_user.id)
@@ -830,6 +900,7 @@ async def timezone_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# ===== БРИФИНГ =====
 @router.message(F.text == "🌅 Брифинг")
 async def brief_menu(message: Message, state: FSMContext):
     await state.clear()

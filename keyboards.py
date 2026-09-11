@@ -20,8 +20,14 @@ def consent_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def name_skip_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="⏭ Пропустить", callback_data="name_skip")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def sleep_main_keyboard():
-    """Главное меню сна."""
     buttons = [
         [InlineKeyboardButton(text="☀️ Дневной сон", callback_data="sleep_day_menu"),
          InlineKeyboardButton(text="🌙 Ночной сон", callback_data="sleep_night_menu")],
@@ -34,7 +40,6 @@ def sleep_main_keyboard():
 
 
 def sleep_day_keyboard():
-    """Меню дневного сна."""
     buttons = [
         [InlineKeyboardButton(text="😴 Заснул сейчас", callback_data="day_start_now"),
          InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="day_end_now")],
@@ -48,7 +53,6 @@ def sleep_day_keyboard():
 
 
 def sleep_night_keyboard():
-    """Меню ночного сна."""
     buttons = [
         [InlineKeyboardButton(text="🌙 Заснул вечером", callback_data="night_start_now")],
         [InlineKeyboardButton(text="☀️ Проснулся утром", callback_data="night_end_now")],
@@ -58,7 +62,6 @@ def sleep_night_keyboard():
 
 
 def sleep_list_keyboard(sleeps):
-    """Клавиатура со списком снов за сегодня — для удаления."""
     buttons = []
     for i, s in enumerate(sleeps):
         start_id = s.get("start_id") or "none"

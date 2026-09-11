@@ -17,6 +17,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             child_birthday TEXT,
+            child_name TEXT DEFAULT '',
             morning_brief_time TEXT DEFAULT '08:00',
             timezone TEXT,
             consent_given INTEGER DEFAULT 0,
@@ -26,12 +27,13 @@ def init_db():
         )
     ''')
 
-    # Дополняем таблицу, если поля отсутствуют (для старых баз)
+    # Дополняем таблицу, если полей нет (для старых баз)
     for alter in [
         "ALTER TABLE users ADD COLUMN consent_given INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN brief_enabled INTEGER DEFAULT 1",
         "ALTER TABLE users ADD COLUMN zodiac TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN last_brief_date TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN child_name TEXT DEFAULT ''",
     ]:
         try:
             cur.execute(alter)
@@ -291,24 +293,33 @@ def get_user(user_id: int):
         return {
             "user_id": row[0],
             "child_birthday": row[1],
-            "morning_brief_time": row[2],
-            "timezone": row[3],
-            "consent_given": bool(row[4]) if len(row) > 4 else False,
-            "brief_enabled": bool(row[5]) if len(row) > 5 and row[5] is not None else True,
-            "zodiac": row[6] if len(row) > 6 and row[6] else "",
-            "last_brief_date": row[7] if len(row) > 7 and row[7] else "",
+            "child_name": row[2] if len(row) > 2 and row[2] else "",
+            "morning_brief_time": row[3] if len(row) > 3 else "08:00",
+            "timezone": row[4] if len(row) > 4 else "Asia/Krasnoyarsk",
+            "consent_given": bool(row[5]) if len(row) > 5 else False,
+            "brief_enabled": bool(row[6]) if len(row) > 6 and row[6] is not None else True,
+            "zodiac": row[7] if len(row) > 7 and row[7] else "",
+            "last_brief_date": row[8] if len(row) > 8 and row[8] else "",
         }
     return None
 
 
-def create_user(user_id: int, child_birthday: str, morning_brief_time: str = "08:00", timezone: str = "Asia/Krasnoyarsk"):
+def create_user(user_id: int, child_birthday: str, child_name: str = "", morning_brief_time: str = "08:00", timezone: str = "Asia/Krasnoyarsk"):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR REPLACE INTO users (user_id, child_birthday, morning_brief_time, timezone, consent_given, brief_enabled, zodiac, last_brief_date) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (user_id, child_birthday, morning_brief_time, timezone, 0, 1, "", "")
+        "INSERT OR REPLACE INTO users (user_id, child_birthday, child_name, morning_brief_time, timezone, consent_given, brief_enabled, zodiac, last_brief_date) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (user_id, child_birthday, child_name, morning_brief_time, timezone, 0, 1, "", "")
     )
+    conn.commit()
+    conn.close()
+
+
+def update_user_child_name(user_id: int, child_name: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET child_name = ? WHERE user_id = ?", (child_name, user_id))
     conn.commit()
     conn.close()
 
@@ -354,7 +365,6 @@ def update_last_brief_date(user_id: int, date_str: str):
 
 
 def get_users_for_brief():
-    """Возвращает всех пользователей, у которых включён брифинг и дано согласие."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT user_id, morning_brief_time, timezone, zodiac, last_brief_date FROM users WHERE brief_enabled = 1 AND consent_given = 1")
@@ -477,27 +487,9 @@ def get_answer_by_id(knowledge_id: int):
     conn.close()
     return row[0] if row else "Ответ не найден."
 
-def delete_event_by_id(event_id: int):
-    """Удаляет событие по id."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM events WHERE id = ?", (event_id,))
-    conn.commit()
-    conn.close()
 
-def delete_sleep(user_id: int, start_id, end_id):
-    """Удаляет пару событий сна (начало и конец)."""
-    conn = get_connection()
-    cur = conn.cursor()
-    if start_id:
-        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (start_id, user_id))
-    if end_id:
-        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (end_id, user_id))
-    conn.commit()
-    conn.close()
-
+# ===== Удаление =====
 def delete_last_event(user_id: int):
-    """Удаляет последнее событие пользователя (для кнопки «Отменить»)."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT id, event_type, timestamp FROM events WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,))
@@ -509,3 +501,27 @@ def delete_last_event(user_id: int):
         return {"id": row[0], "event_type": row[1], "timestamp": row[2]}
     conn.close()
     return None
+
+
+def delete_event_by_id(event_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_sleep(user_id: int, start_id, end_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    if start_id:
+        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (start_id, user_id))
+    if end_id:
+        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (end_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_last_sleep_start(user_id: int):
+    """Возвращает последнее событие sleep_start для пользователя."""
+    return get_last_event(user_id, "sleep_start")

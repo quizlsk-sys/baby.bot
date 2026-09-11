@@ -12,19 +12,20 @@ from database import (
     get_idea_by_age, answer_question, get_questions_by_category,
     get_answer_by_id, get_connection, update_user_consent,
     update_user_brief_time, update_user_zodiac, update_user_brief_enabled,
-    delete_last_event, delete_event_by_id, delete_sleep,
+    delete_last_event, delete_sleep, update_user_child_name,
+    get_last_sleep_start,
 )
 from states import UserStates
 from keyboards import (
-    main_keyboard, consent_keyboard, sleep_main_keyboard, sleep_day_keyboard,
-    sleep_night_keyboard, sleep_list_keyboard, mood_keyboard,
-    stats_period_keyboard, timezone_keyboard, categories_keyboard,
-    questions_keyboard, CATEGORIES,
+    main_keyboard, consent_keyboard, name_skip_keyboard,
+    sleep_main_keyboard, sleep_day_keyboard, sleep_night_keyboard,
+    sleep_list_keyboard, mood_keyboard, stats_period_keyboard,
+    timezone_keyboard, categories_keyboard, questions_keyboard, CATEGORIES,
     brief_menu_keyboard, zodiac_keyboard, ZODIAC_SIGNS,
 )
 from utils import (
     get_child_age_days, recalc_schedule, generate_stats,
-    now_in_user_tz, to_user_tz, get_user_tz
+    now_in_user_tz, to_user_tz, get_user_tz,
 )
 from ai_helper import generate_text
 
@@ -39,17 +40,23 @@ MAIN_BUTTONS = [
 
 
 # ===== Вспомогательные функции =====
-def format_birthday_display(iso_str: str) -> str:
-    if not iso_str:
-        return ""
-    try:
-        return datetime.strptime(iso_str, "%Y-%m-%d").strftime("%d-%m-%Y")
-    except (ValueError, TypeError):
-        return iso_str
+def _child_name(user) -> str:
+    if user and user.get("child_name"):
+        return user["child_name"]
+    return "Малыш"
+
+
+def _format_hm(minutes: int) -> str:
+    h = minutes // 60
+    m = minutes % 60
+    if h and m:
+        return f"{h} ч {m} мин"
+    if h:
+        return f"{h} ч"
+    return f"{m} мин"
 
 
 def _collect_sleeps(user_id: int):
-    """Собирает сны за сегодня: пары start/end."""
     today = now_in_user_tz(user_id).date()
     events = get_day_events(user_id, today)
     events = [e for e in events if e["event_type"] in ("sleep_start", "sleep_end")]
@@ -83,7 +90,6 @@ def _is_night(start_ts, tz):
 
 
 def _format_sleeps_list(user_id: int, sleeps):
-    """Формирует текст со списком снов."""
     tz = get_user_tz(user_id)
     if not sleeps:
         return "📋 Снов за сегодня пока нет."
@@ -158,28 +164,25 @@ async def cmd_delete_me(message: Message, state: FSMContext):
 
 
 # ===== Инструкция при старте =====
-async def send_welcome_instructions(message: Message):
+async def send_welcome_instructions(message: Message, user=None):
+    name = _child_name(user) if user else "Малыш"
     text = (
-        "🎉 Отлично, всё настроено!\n\n"
-        "📋 <b>Что можно настроить (по желанию):</b>\n\n"
-        "1️⃣ <b>🌍 Часовой пояс</b>\n"
-        "По умолчанию стоит Красноярск. Если ты в другом городе — "
-        "нажми «🌍 Часовой пояс» и выбери свой, чтобы все отметки сна и брифинг "
-        "приходили в правильное время.\n\n"
-        "2️⃣ <b>🌅 Утренний брифинг</b>\n"
-        "Каждое утро бот будет присылать тёплое персональное сообщение: "
-        "приветствие, идею для занятия с малышом, пожелание и гороскоп.\n"
-        "👉 Нажми кнопку «🌅 Брифинг» внизу → там можно:\n"
-        "   • Включить/выключить\n"
-        "   • Выбрать удобное время (например, 08:00)\n"
-        "   • Указать свой знак зодиака\n\n"
-        "💡 <b>Остальные кнопки:</b>\n"
-        "😴 <b>Сон</b> — дневной / ночной сон, ночные пробуждения, список снов за день\n"
-        "📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
-        "💡 <b>Идея дня</b> — случайная идея для занятия с малышом\n"
-        "📚 <b>Полезное</b> — ответы на вопросы (сон, прикорм, здоровье…)\n"
-        "❤️ <b>Самочувствие</b> — отмечай своё настроение\n\n"
-        "Хорошего дня! 🌸"
+        f"🎉 Отлично, всё настроено!\n\n"
+        f"📋 <b>Что можно настроить:</b>\n\n"
+        f"1️⃣ <b>🌍 Часовой пояс</b>\n"
+        f"Проверь, что стоит твой город — чтобы все отметки сна и брифинг "
+        f"приходили в правильное время.\n\n"
+        f"2️⃣ <b>🌅 Утренний брифинг</b>\n"
+        f"Каждое утро бот присылает персональное сообщение: "
+        f"приветствие, идею для занятия с {name}, пожелание и гороскоп.\n"
+        f"👉 Кнопка «🌅 Брифинг» внизу.\n\n"
+        f"💡 <b>Остальные кнопки:</b>\n"
+        f"😴 <b>Сон</b> — отметить сон {name}: дневной / ночной / пробуждение\n"
+        f"📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
+        f"💡 <b>Идея дня</b> — случайная идея для занятия\n"
+        f"📚 <b>Полезное</b> — ответы на вопросы\n"
+        f"❤️ <b>Самочувствие</b> — отметка настроения\n\n"
+        f"Хорошего дня! 🌸"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard())
 
@@ -191,13 +194,23 @@ async def cmd_start(message: Message, state: FSMContext):
     user = get_user(user_id)
 
     if user and user.get("consent_given"):
-        await send_welcome_instructions(message)
+        # Если имя ещё не задано — спросим
+        if not user.get("child_name"):
+            await message.answer(
+                "Как зовут малыша? Это нужно для персональных сообщений "
+                "(например, «Мишка проснулся в 7:20»).\n\n"
+                "Напиши имя одним словом или нажми «Пропустить»:",
+                reply_markup=name_skip_keyboard()
+            )
+            await state.set_state(UserStates.waiting_child_name_change)
+            return
+        await send_welcome_instructions(message, user)
         await state.clear()
     else:
         await message.answer(
             "👋 Привет! Я бот-помощник для мам.\n\n"
             "Прежде чем начать, мне нужно получить ваше согласие на обработку персональных данных. "
-            "Это необходимо для корректной работы бота (например, чтобы сохранять дату рождения ребёнка).\n\n"
+            "Это необходимо для корректной работы бота.\n\n"
             "Пожалуйста, ознакомьтесь с политикой конфиденциальности и подтвердите согласие:",
             reply_markup=consent_keyboard()
         )
@@ -223,7 +236,7 @@ async def process_consent_agree(callback: types.CallbackQuery, state: FSMContext
         await state.set_state(UserStates.waiting_birthday)
     else:
         await callback.message.edit_text("Спасибо! Согласие получено. ✅")
-        await send_welcome_instructions(callback.message)
+        await send_welcome_instructions(callback.message, user)
         await state.clear()
 
     await callback.answer()
@@ -239,7 +252,7 @@ async def process_consent_decline(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
 
 
-# ===== Дата рождения =====
+# ===== Дата рождения (формат ДД-ММ-ГГГГ) =====
 @router.message(UserStates.waiting_birthday)
 async def process_birthday(message: Message, state: FSMContext):
     text = message.text.strip()
@@ -255,7 +268,6 @@ async def process_birthday(message: Message, state: FSMContext):
         return
 
     iso_str = parsed.strftime("%Y-%m-%d")
-
     user_id = message.from_user.id
     user = get_user(user_id)
 
@@ -269,7 +281,50 @@ async def process_birthday(message: Message, state: FSMContext):
         create_user(user_id, iso_str)
         update_user_consent(user_id, True)
 
-    await send_welcome_instructions(message)
+    await message.answer(
+        "А как зовут малыша? Напиши имя одним словом "
+        "(например, «Миша») — или нажми «Пропустить».",
+        reply_markup=name_skip_keyboard()
+    )
+    await state.set_state(UserStates.waiting_child_name)
+
+
+@router.message(UserStates.waiting_child_name, ~F.text.in_(MAIN_BUTTONS))
+async def process_child_name(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if len(text) > 40:
+        await message.answer("Слишком длинное имя. Попробуй короче.")
+        return
+    user_id = message.from_user.id
+    update_user_child_name(user_id, text)
+    user = get_user(user_id)
+    await send_welcome_instructions(message, user)
+    await state.clear()
+
+
+@router.callback_query(F.data == "name_skip")
+async def process_name_skip(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    update_user_child_name(user_id, "")
+    user = get_user(user_id)
+    await callback.message.edit_text("Хорошо, буду называть просто «Малыш». ✅")
+    await send_welcome_instructions(callback.message, user)
+    await state.clear()
+    await callback.answer()
+
+
+# ===== Изменение имени из /start =====
+@router.message(UserStates.waiting_child_name_change, ~F.text.in_(MAIN_BUTTONS))
+async def process_child_name_change(message: Message, state: FSMContext):
+    text = message.text.strip()
+    user_id = message.from_user.id
+    if len(text) > 40:
+        await message.answer("Слишком длинное имя.")
+        return
+    update_user_child_name(user_id, text)
+    user = get_user(user_id)
+    await message.answer(f"Запомнил! Буду звать {text}. ✅")
+    await send_welcome_instructions(message, user)
     await state.clear()
 
 
@@ -277,7 +332,8 @@ async def process_birthday(message: Message, state: FSMContext):
 @router.message(F.text == "😴 Сон")
 async def sleep_menu(message: Message, state: FSMContext):
     await state.clear()
-    if not get_user(message.from_user.id):
+    user = get_user(message.from_user.id)
+    if not user:
         await message.answer("Сначала настрой бота через /start")
         return
     await message.answer(
@@ -302,9 +358,11 @@ async def cb_sleep_back(callback: types.CallbackQuery):
 # ===== ДНЕВНОЙ СОН =====
 @router.callback_query(F.data == "sleep_day_menu")
 async def cb_day_menu(callback: types.CallbackQuery):
+    user = get_user(callback.from_user.id)
+    name = _child_name(user)
     await callback.message.edit_text(
-        "☀️ <b>Дневной сон</b>\n\n"
-        "Отметь начало или конец дневного сна:",
+        f"☀️ <b>Дневной сон {name}</b>\n\n"
+        f"Отметь начало или конец дневного сна:",
         parse_mode="HTML",
         reply_markup=sleep_day_keyboard()
     )
@@ -313,41 +371,42 @@ async def cb_day_menu(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "day_start_now")
 async def cb_day_start_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 0, "☀️ Записал: <b>дневной сон начался в {t}</b>.")
+    await _record_sleep(callback, "sleep_start", 0, is_night=False, minutes_ago=0)
 
 
 @router.callback_query(F.data == "day_start_15")
 async def cb_day_start_15(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 15, "☀️ Записал: <b>дневной сон начался в {t}</b> (15 мин назад).")
+    await _record_sleep(callback, "sleep_start", 15, is_night=False, minutes_ago=15)
 
 
 @router.callback_query(F.data == "day_start_30")
 async def cb_day_start_30(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 30, "☀️ Записал: <b>дневной сон начался в {t}</b> (30 мин назад).")
+    await _record_sleep(callback, "sleep_start", 30, is_night=False, minutes_ago=30)
 
 
 @router.callback_query(F.data == "day_end_now")
 async def cb_day_end_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 0, "☀️ Записал: <b>дневной сон закончился в {t}</b>.")
+    await _record_sleep(callback, "sleep_end", 0, is_night=False, minutes_ago=0)
 
 
 @router.callback_query(F.data == "day_end_15")
 async def cb_day_end_15(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 15, "☀️ Записал: <b>дневной сон закончился в {t}</b> (15 мин назад).")
+    await _record_sleep(callback, "sleep_end", 15, is_night=False, minutes_ago=15)
 
 
 @router.callback_query(F.data == "day_end_30")
 async def cb_day_end_30(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 30, "☀️ Записал: <b>дневной сон закончился в {t}</b> (30 мин назад).")
+    await _record_sleep(callback, "sleep_end", 30, is_night=False, minutes_ago=30)
 
 
 # ===== НОЧНОЙ СОН =====
 @router.callback_query(F.data == "sleep_night_menu")
 async def cb_night_menu(callback: types.CallbackQuery):
+    user = get_user(callback.from_user.id)
+    name = _child_name(user)
     await callback.message.edit_text(
-        "🌙 <b>Ночной сон</b>\n\n"
-        "Вечером отметь «Заснул вечером» — это начало ночного сна.\n"
-        "Утром отметь «Проснулся утром» — это конец ночного сна.",
+        f"🌙 <b>Ночной сон {name}</b>\n\n"
+        f"Вечером — «Заснул вечером», утром — «Проснулся утром».",
         parse_mode="HTML",
         reply_markup=sleep_night_keyboard()
     )
@@ -356,33 +415,51 @@ async def cb_night_menu(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "night_start_now")
 async def cb_night_start_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_start", 0, "🌙 Записал: <b>ночной сон начался в {t}</b>.")
+    await _record_sleep(callback, "sleep_start", 0, is_night=True, minutes_ago=0)
 
 
 @router.callback_query(F.data == "night_end_now")
 async def cb_night_end_now(callback: types.CallbackQuery):
-    await _record_sleep(callback, "sleep_end", 0, "🌙 Записал: <b>ночной сон закончился в {t}</b>.\n\n{dobavka}", include_schedule=True)
+    await _record_sleep(callback, "sleep_end", 0, is_night=True, minutes_ago=0)
 
 
-# ===== Вспомогательная функция для записи сна =====
-async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_ago: int, template: str, include_schedule: bool = False):
+# ===== Вспомогательная функция записи сна =====
+async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_ago: int, is_night: bool = False, **_):
     user_id = callback.from_user.id
-    if not get_user(user_id):
+    user = get_user(user_id)
+    if not user:
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
+
+    name = _child_name(user)
     ts = int((datetime.now() - timedelta(minutes=minutes_ago)).timestamp())
-    add_event(user_id, event_type, ts)
     local = to_user_tz(user_id, ts).strftime('%H:%M')
+    kind = "🌙 ночной сон" if is_night else "☀️ дневной сон"
 
-    if include_schedule:
-        schedule_text = recalc_schedule(user_id, ts)
-        text = template.format(t=local, dobavka=schedule_text)
+    add_event(user_id, event_type, ts)
+
+    if event_type == "sleep_start":
+        text = (
+            f"✅ {name} заснул в <b>{local}</b> ({kind}).\n\n"
+            f"Когда проснётся — отметь «Проснулся»."
+        )
+        await callback.message.edit_text(text, parse_mode="HTML")
     else:
-        text = template.format(t=local)
-        if event_type == "sleep_start":
-            text += "\n\nКогда проснётся — зайди в «😴 Сон» и отметь «Проснулся»."
+        # Найти последний sleep_start и посчитать длительность
+        last_start = get_last_sleep_start(user_id)
+        duration_str = ""
+        if last_start:
+            dur_min = (ts - last_start["timestamp"]) // 60
+            if dur_min > 0:
+                duration_str = f"\n😴 {name} поспал: {_format_hm(dur_min)}."
 
-    await callback.message.edit_text(text, parse_mode="HTML")
+        schedule_text = recalc_schedule(user_id, ts)
+        text = (
+            f"✅ {name} проснулся в <b>{local}</b> ({kind}).{duration_str}\n\n"
+            f"{schedule_text}"
+        )
+        await callback.message.edit_text(text, parse_mode="HTML")
+
     await callback.answer()
 
 
@@ -390,9 +467,11 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
 @router.callback_query(F.data == "night_wake")
 async def cb_night_wake(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    if not get_user(user_id):
+    user = get_user(user_id)
+    if not user:
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
+    name = _child_name(user)
     now = int(datetime.now().timestamp())
     add_event(user_id, "night_wake", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
@@ -404,7 +483,7 @@ async def cb_night_wake(callback: types.CallbackQuery):
     count = sum(1 for e in events if e["event_type"] == "night_wake")
 
     await callback.message.edit_text(
-        f"🌙 Записал: <b>ночное пробуждение в {local}</b>.\n"
+        f"🌙 Записал: <b>{name} проснулся ночью в {local}</b>.\n"
         f"Сегодня уже {count} пробуждени{'е' if count == 1 else 'я' if 2 <= count <= 4 else 'й'}.",
         parse_mode="HTML"
     )
@@ -424,7 +503,7 @@ async def cb_sleep_list(callback: types.CallbackQuery):
 
     if not sleeps:
         await callback.message.edit_text(
-            text + "\n\nЕсли хотите что-то удалить — здесь появятся кнопки.",
+            text,
             parse_mode="HTML",
             reply_markup=sleep_main_keyboard()
         )
@@ -455,10 +534,8 @@ async def cb_delete_sleep(callback: types.CallbackQuery):
 
     delete_sleep(user_id, start_id, end_id)
 
-    # Пересобираем список
     sleeps = _collect_sleeps(user_id)
-    text = _format_sleeps_list(user_id, sleeps)
-    text = "🗑 Сон удалён.\n\n" + text
+    text = "🗑 Сон удалён.\n\n" + _format_sleeps_list(user_id, sleeps)
 
     if not sleeps:
         await callback.message.edit_text(
@@ -532,6 +609,8 @@ async def process_manual_time(message: Message, state: FSMContext):
     event_type = "sleep_start" if match.group(1) == "уснул" else "sleep_end"
     time_str = match.group(2)
     user_id = message.from_user.id
+    user = get_user(user_id)
+    name = _child_name(user)
     try:
         tz = get_user_tz(user_id)
         today = now_in_user_tz(user_id).date()
@@ -546,13 +625,19 @@ async def process_manual_time(message: Message, state: FSMContext):
 
     if event_type == "sleep_start":
         await message.answer(
-            f"✅ Записал: <b>заснул в {local_str}</b>.",
+            f"✅ {name} заснул в <b>{local_str}</b>.",
             parse_mode="HTML"
         )
     else:
+        last_start = get_last_sleep_start(user_id)
+        duration_str = ""
+        if last_start:
+            dur_min = (ts - last_start["timestamp"]) // 60
+            if dur_min > 0:
+                duration_str = f"\n😴 {name} поспал: {_format_hm(dur_min)}."
         schedule_text = recalc_schedule(user_id, ts)
         await message.answer(
-            f"✅ Записал: <b>проснулся в {local_str}</b>.\n\n{schedule_text}",
+            f"✅ {name} проснулся в <b>{local_str}</b>.{duration_str}\n\n{schedule_text}",
             parse_mode="HTML"
         )
     await state.clear()

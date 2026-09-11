@@ -12,7 +12,6 @@ def get_child_age_days(user_id: int):
 
 
 def get_user_tz(user_id: int):
-    """Возвращает ZoneInfo с часовым поясом пользователя (или Красноярск по умолчанию)."""
     user = get_user(user_id)
     if user and user.get("timezone"):
         try:
@@ -23,60 +22,70 @@ def get_user_tz(user_id: int):
 
 
 def now_in_user_tz(user_id: int):
-    """Текущее время в часовом поясе пользователя."""
     return datetime.now(get_user_tz(user_id))
 
 
 def to_user_tz(user_id: int, ts: int):
-    """Преобразует unix timestamp в datetime в часовом поясе пользователя."""
     return datetime.fromtimestamp(ts, get_user_tz(user_id))
 
 
-def get_average_wake_time(user_id: int, days=3):
-    """Простая эвристика по возрасту."""
-    age_days = get_child_age_days(user_id)
+def get_wake_window(age_days: int):
+    """Возвращает (min_minutes, max_minutes) — окно бодрствования по возрасту."""
     if age_days is None:
-        return 120
-    if age_days < 60:
-        return 60
-    elif age_days < 120:
-        return 90
-    elif age_days < 180:
-        return 120
-    elif age_days < 270:
-        return 150
+        return (120, 180)
+    if age_days < 60:       # 0–2 мес
+        return (45, 90)
+    elif age_days < 120:    # 2–4 мес
+        return (75, 120)
+    elif age_days < 180:    # 4–6 мес
+        return (105, 150)
+    elif age_days < 270:    # 6–9 мес
+        return (150, 210)
+    elif age_days < 365:    # 9–12 мес
+        return (180, 240)
+    elif age_days < 550:    # 1–1.5 года
+        return (240, 300)
     else:
-        return 180
+        return (270, 360)
+
+
+def get_average_wake_time(user_id: int, days=3):
+    """Среднее (min+max)/2 — оставляем для совместимости."""
+    age_days = get_child_age_days(user_id)
+    lo, hi = get_wake_window(age_days)
+    return (lo + hi) // 2
+
+
+def _format_hm(minutes: int) -> str:
+    h = minutes // 60
+    m = minutes % 60
+    if h and m:
+        return f"{h} ч {m} мин"
+    if h:
+        return f"{h} ч"
+    return f"{m} мин"
 
 
 def recalc_schedule(user_id: int, wake_timestamp: int):
-    """Пересчёт режима после пробуждения. Все времена — в часовом поясе пользователя."""
+    """Пересчёт режима после пробуждения: длительность окна + рекомендуемое укладывание."""
     age_days = get_child_age_days(user_id)
-    avg_wake = get_average_wake_time(user_id)
-    next_sleep = wake_timestamp + avg_wake * 60
-    next_sleep_dt = to_user_tz(user_id, next_sleep)
-    hour = next_sleep_dt.hour
-    if 19 <= hour or hour < 6:
-        sleep_duration = 540  # ночной сон ~9 часов
-    else:
-        sleep_duration = 90   # дневной сон ~1.5 часа
-    wake_after_next = next_sleep + sleep_duration * 60
-    wake_after_next_dt = to_user_tz(user_id, wake_after_next)
-    wake_local = to_user_tz(user_id, wake_timestamp)
+    lo, hi = get_wake_window(age_days)
+
+    next_sleep_min = wake_timestamp + lo * 60
+    next_sleep_max = wake_timestamp + hi * 60
+
+    dt_min = to_user_tz(user_id, next_sleep_min)
+    dt_max = to_user_tz(user_id, next_sleep_max)
 
     msg = (
-        f"🔄 Режим пересчитан на основе пробуждения в {wake_local.strftime('%H:%M')}\n"
-        f"⏳ Рекомендуемое бодрствование: {avg_wake} мин.\n"
-        f"💤 Следующий сон: ~ {next_sleep_dt.strftime('%H:%M')}\n"
-        f"🌙 Ожидаемое пробуждение: ~ {wake_after_next_dt.strftime('%H:%M')}\n"
+        f"💤 Следующее укладывание ориентировочно в "
+        f"<b>{dt_min.strftime('%H:%M')} – {dt_max.strftime('%H:%M')}</b>\n"
+        f"(через {_format_hm(lo)} – {_format_hm(hi)})\n"
     )
-    if hour >= 18:
-        msg += "\n🌆 Вечернее время, следующий сон, вероятно, ночной."
     return msg
 
 
 def generate_stats(user_id: int, days=1):
-    """Статистика за последние days дней (включая сегодня). Время — в часовом поясе пользователя."""
     now = datetime.now()
     start_date = now - timedelta(days=days - 1)
     start_ts = int(start_date.replace(hour=0, minute=0, second=0).timestamp())
@@ -98,14 +107,15 @@ def generate_stats(user_id: int, days=1):
     avg_sleep_min = total_sleep_min / len(sleeps) if sleeps else 0
     night_wakes = [e for e in events if e["event_type"] == "night_wake"]
     num_sleeps = len(sleeps)
-    avg_wake = get_average_wake_time(user_id)
+    age_days = get_child_age_days(user_id)
+    lo, hi = get_wake_window(age_days)
 
     msg = f"📊 Статистика за последние {days} дн:\n"
     msg += f"• Всего снов: {num_sleeps}\n"
     if num_sleeps > 0:
         msg += f"• Общая длительность сна: {total_sleep_min / 60:.1f} ч ({total_sleep_min:.0f} мин)\n"
         msg += f"• Средняя длительность сна: {avg_sleep_min:.0f} мин\n"
-    msg += f"• Среднее бодрствование: {avg_wake} мин\n"
+    msg += f"• Окно бодрствования по возрасту: {_format_hm(lo)} – {_format_hm(hi)}\n"
     msg += f"• Ночные пробуждения: {len(night_wakes)}\n"
     if night_wakes:
         times = [to_user_tz(user_id, e["timestamp"]).strftime("%H:%M") for e in night_wakes]

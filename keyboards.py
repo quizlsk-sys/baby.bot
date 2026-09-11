@@ -20,19 +20,56 @@ def consent_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def sleep_keyboard():
-    """Всплывающее меню отметок сна. Названия кнопок — явные."""
+def sleep_main_keyboard():
+    """Главное меню сна."""
     buttons = [
-        [InlineKeyboardButton(text="😴 Заснул только что", callback_data="sleep_start_now"),
-         InlineKeyboardButton(text="👶 Проснулся только что", callback_data="sleep_end_now")],
-        [InlineKeyboardButton(text="😴 Заснул 15 минут назад", callback_data="sleep_start_15"),
-         InlineKeyboardButton(text="👶 Проснулся 15 минут назад", callback_data="sleep_end_15")],
-        [InlineKeyboardButton(text="😴 Заснул 30 минут назад", callback_data="sleep_start_30"),
-         InlineKeyboardButton(text="👶 Проснулся 30 минут назад", callback_data="sleep_end_30")],
+        [InlineKeyboardButton(text="☀️ Дневной сон", callback_data="sleep_day_menu"),
+         InlineKeyboardButton(text="🌙 Ночной сон", callback_data="sleep_night_menu")],
         [InlineKeyboardButton(text="🌙 Ночное пробуждение", callback_data="night_wake")],
-        [InlineKeyboardButton(text="⌨️ Ввести время вручную", callback_data="sleep_manual")],
-        [InlineKeyboardButton(text="↩️ Отменить последнее действие", callback_data="sleep_undo")],
+        [InlineKeyboardButton(text="📋 Сны за сегодня", callback_data="sleep_list")],
+        [InlineKeyboardButton(text="⌨️ Ввести вручную", callback_data="sleep_manual")],
+        [InlineKeyboardButton(text="↩️ Отменить последнее", callback_data="sleep_undo")],
     ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def sleep_day_keyboard():
+    """Меню дневного сна."""
+    buttons = [
+        [InlineKeyboardButton(text="😴 Заснул сейчас", callback_data="day_start_now"),
+         InlineKeyboardButton(text="👶 Проснулся сейчас", callback_data="day_end_now")],
+        [InlineKeyboardButton(text="😴 Заснул 15 мин назад", callback_data="day_start_15"),
+         InlineKeyboardButton(text="👶 Проснулся 15 мин назад", callback_data="day_end_15")],
+        [InlineKeyboardButton(text="😴 Заснул 30 мин назад", callback_data="day_start_30"),
+         InlineKeyboardButton(text="👶 Проснулся 30 мин назад", callback_data="day_end_30")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="sleep_back")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def sleep_night_keyboard():
+    """Меню ночного сна."""
+    buttons = [
+        [InlineKeyboardButton(text="🌙 Заснул вечером", callback_data="night_start_now")],
+        [InlineKeyboardButton(text="☀️ Проснулся утром", callback_data="night_end_now")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="sleep_back")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def sleep_list_keyboard(sleeps):
+    """Клавиатура со списком снов за сегодня — для удаления."""
+    buttons = []
+    for i, s in enumerate(sleeps):
+        start_id = s.get("start_id") or "none"
+        end_id = s.get("end_id") or "none"
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"🗑 Удалить сон №{i + 1}",
+                callback_data=f"del_sleep:{start_id}:{end_id}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="sleep_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -63,7 +100,6 @@ def timezone_keyboard():
         [InlineKeyboardButton(text="Владивосток (UTC+10)", callback_data="tz_Asia/Vladivostok")],
         [InlineKeyboardButton(text="Калининград (UTC+2)", callback_data="tz_Europe/Kaliningrad")],
         [InlineKeyboardButton(text="Екатеринбург (UTC+5)", callback_data="tz_Asia/Yekaterinburg")],
-        [InlineKeyboardButton(text="◀️ Проверить ещё раз", callback_data="tz_check")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

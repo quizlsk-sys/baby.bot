@@ -477,6 +477,25 @@ def get_answer_by_id(knowledge_id: int):
     conn.close()
     return row[0] if row else "Ответ не найден."
 
+def delete_event_by_id(event_id: int):
+    """Удаляет событие по id."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+
+def delete_sleep(user_id: int, start_id, end_id):
+    """Удаляет пару событий сна (начало и конец)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    if start_id:
+        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (start_id, user_id))
+    if end_id:
+        cur.execute("DELETE FROM events WHERE id = ? AND user_id = ?", (end_id, user_id))
+    conn.commit()
+    conn.close()
+
 def delete_last_event(user_id: int):
     """Удаляет последнее событие пользователя (для кнопки «Отменить»)."""
     conn = get_connection()

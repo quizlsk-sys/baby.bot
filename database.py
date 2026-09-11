@@ -285,21 +285,28 @@ def init_db():
 def get_user(user_id: int):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    # ЯВНО указываем колонки — так порядок не зависит от истории ALTER TABLE
+    cur.execute(
+        "SELECT user_id, child_birthday, child_name, morning_brief_time, "
+        "timezone, consent_given, brief_enabled, zodiac, "
+        "last_brief_date, last_brief_message_id "
+        "FROM users WHERE user_id = ?",
+        (user_id,)
+    )
     row = cur.fetchone()
     conn.close()
     if row:
         return {
             "user_id": row[0],
-            "child_birthday": row[1],
-            "child_name": row[2] if len(row) > 2 and row[2] else "",
-            "morning_brief_time": row[3] if len(row) > 3 else "08:00",
-            "timezone": row[4] if len(row) > 4 else "Asia/Krasnoyarsk",
-            "consent_given": bool(row[5]) if len(row) > 5 else False,
-            "brief_enabled": bool(row[6]) if len(row) > 6 and row[6] is not None else True,
-            "zodiac": row[7] if len(row) > 7 and row[7] else "",
-            "last_brief_date": row[8] if len(row) > 8 and row[8] else "",
-            "last_brief_message_id": row[9] if len(row) > 9 and row[9] else 0,
+            "child_birthday": row[1] or "",
+            "child_name": row[2] or "",
+            "morning_brief_time": row[3] or "08:00",
+            "timezone": row[4] or "Asia/Krasnoyarsk",
+            "consent_given": bool(row[5]) if row[5] is not None else False,
+            "brief_enabled": bool(row[6]) if row[6] is not None else True,
+            "zodiac": row[7] or "",
+            "last_brief_date": row[8] or "",
+            "last_brief_message_id": row[9] or 0,
         }
     return None
 
@@ -308,7 +315,9 @@ def create_user(user_id: int, child_birthday: str, child_name: str = "", morning
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR REPLACE INTO users (user_id, child_birthday, child_name, morning_brief_time, timezone, consent_given, brief_enabled, zodiac, last_brief_date, last_brief_message_id) "
+        "INSERT OR REPLACE INTO users "
+        "(user_id, child_birthday, child_name, morning_brief_time, timezone, "
+        "consent_given, brief_enabled, zodiac, last_brief_date, last_brief_message_id) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (user_id, child_birthday, child_name, morning_brief_time, timezone, 0, 1, "", "", 0)
     )
@@ -375,7 +384,10 @@ def update_last_brief_message_id(user_id: int, message_id: int):
 def get_users_for_brief():
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT user_id, morning_brief_time, timezone, zodiac, last_brief_date FROM users WHERE brief_enabled = 1 AND consent_given = 1")
+    cur.execute(
+        "SELECT user_id, morning_brief_time, timezone, zodiac, last_brief_date "
+        "FROM users WHERE brief_enabled = 1 AND consent_given = 1"
+    )
     rows = cur.fetchall()
     conn.close()
     return [

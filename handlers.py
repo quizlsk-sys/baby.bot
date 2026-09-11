@@ -43,8 +43,24 @@ MAIN_BUTTONS = [
 
 def _child_name(user) -> str:
     if user and user.get("child_name"):
-        return user["child_name"]
+        name = user["child_name"]
+        # Если имя «странное» (с цифрами) — не показываем
+        if any(ch.isdigit() for ch in name):
+            return "Малыш"
+        return name
     return "Малыш"
+
+
+def _is_valid_name(text: str) -> bool:
+    """Имя не должно содержать цифр и быть слишком длинным."""
+    text = text.strip()
+    if not text:
+        return False
+    if len(text) > 40:
+        return False
+    if any(ch.isdigit() for ch in text):
+        return False
+    return True
 
 
 def _format_hm(minutes: int) -> str:
@@ -146,6 +162,22 @@ async def cmd_backup(message: Message):
     await send_backup(message.bot, ADMIN_ID)
 
 
+@router.message(Command("rename"))
+async def cmd_rename(message: Message, state: FSMContext):
+    await state.clear()
+    user = get_user(message.from_user.id)
+    if not user:
+        await message.answer("Сначала настрой бота через /start")
+        return
+    current = user.get("child_name") or "не задано"
+    await message.answer(
+        f"Текущее имя: <b>{current}</b>\n\n"
+        f"Напиши новое имя малыша (одним словом, без цифр):",
+        parse_mode="HTML"
+    )
+    await state.set_state(UserStates.waiting_child_name_change)
+
+
 @router.message(Command("delete_me"))
 async def cmd_delete_me(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -168,6 +200,8 @@ async def send_welcome_instructions(message: Message, user=None):
     name = _child_name(user) if user else "Малыш"
     text = (
         f"🎉 Отлично, всё настроено!\n\n"
+        f"👶 Имя малыша: <b>{name}</b>\n"
+        f"<i>Если нужно поменять — отправь /rename</i>\n\n"
         f"📋 <b>Что можно настроить:</b>\n\n"
         f"1️⃣ <b>🌍 Часовой пояс</b>\n"
         f"Проверь, что стоит твой город — чтобы все отметки сна и брифинг "
@@ -196,12 +230,12 @@ async def cmd_start(message: Message, state: FSMContext):
     user = get_user(user_id)
 
     if user and user.get("consent_given"):
-        if not user.get("child_name"):
+        current_name = user.get("child_name") or ""
+        # Если имя пустое или содержит цифры — предложить ввести заново
+        if not _is_valid_name(current_name):
             await message.answer(
-                "Как зовут малыша? Это нужно для персональных сообщений "
-                "(например, «Мишка проснулся в 7:20»).\n\n"
-                "Напиши имя одним словом или нажми «Пропустить»:",
-                reply_markup=name_skip_keyboard()
+                f"Кажется, в имени закралась ошибка: «{current_name or 'пусто'}».\n\n"
+                f"Давай введём имя малыша заново — одним словом, без цифр:",
             )
             await state.set_state(UserStates.waiting_child_name_change)
             return
@@ -283,7 +317,9 @@ async def process_birthday(message: Message, state: FSMContext):
 
     await message.answer(
         "А как зовут малыша? Напиши имя одним словом "
-        "(например, «Миша») — или нажми «Пропустить».",
+        "(например, «Миша»).\n\n"
+        "⚠️ Без цифр и без времени — только имя. "
+        "Если не хочешь указывать — нажми «Пропустить».",
         reply_markup=name_skip_keyboard()
     )
     await state.set_state(UserStates.waiting_child_name)
@@ -292,12 +328,16 @@ async def process_birthday(message: Message, state: FSMContext):
 @router.message(UserStates.waiting_child_name, ~F.text.in_(MAIN_BUTTONS))
 async def process_child_name(message: Message, state: FSMContext):
     text = message.text.strip()
-    if len(text) > 40:
-        await message.answer("Слишком длинное имя. Попробуй короче.")
+    if not _is_valid_name(text):
+        await message.answer(
+            "Это не похоже на имя. Напиши, пожалуйста, имя малыша одним словом — "
+            "например, «Миша» или «Соня». Без цифр и времени."
+        )
         return
     user_id = message.from_user.id
     update_user_child_name(user_id, text)
     user = get_user(user_id)
+    await message.answer(f"Запомнил! Буду звать {text}. ✅")
     await send_welcome_instructions(message, user)
     await state.clear()
 
@@ -317,8 +357,10 @@ async def process_name_skip(callback: types.CallbackQuery, state: FSMContext):
 async def process_child_name_change(message: Message, state: FSMContext):
     text = message.text.strip()
     user_id = message.from_user.id
-    if len(text) > 40:
-        await message.answer("Слишком длинное имя.")
+    if not _is_valid_name(text):
+        await message.answer(
+            "Это не похоже на имя. Напиши имя одним словом — например, «Миша». Без цифр."
+        )
         return
     update_user_child_name(user_id, text)
     user = get_user(user_id)
@@ -327,7 +369,7 @@ async def process_child_name_change(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== БЫСТРЫЕ КНОПКИ: Уснул / Проснулся =====
+# ===== БЫСТРЫЕ КНОПКИ =====
 @router.message(F.text == "😴 Уснул")
 async def quick_sleep_start(message: Message):
     user_id = message.from_user.id
@@ -358,7 +400,6 @@ async def quick_sleep_end(message: Message):
     add_event(user_id, "sleep_end", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
 
-    # Длительность прошедшего сна
     last_start = get_last_sleep_start(user_id)
     duration_str = ""
     if last_start:
@@ -375,7 +416,6 @@ async def quick_sleep_end(message: Message):
     )
 
 
-# ===== БЫСТРАЯ КНОПКА: План дня =====
 @router.message(F.text == "📅 План дня")
 async def quick_day_plan(message: Message):
     user_id = message.from_user.id
@@ -390,7 +430,7 @@ async def quick_day_plan(message: Message):
     )
 
 
-# ===== СОН: главное меню (расширенное) =====
+# ===== СОН =====
 @router.message(F.text == "😴 Сон")
 async def sleep_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -714,7 +754,6 @@ async def process_manual_time(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Статистика =====
 @router.message(F.text == "📊 Статистика")
 async def stats_request(message: Message):
     await message.answer("Выбери период:", reply_markup=stats_period_keyboard())
@@ -733,7 +772,6 @@ async def stats_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== Идея дня =====
 @router.message(F.text == "💡 Идея дня")
 async def idea_of_day(message: Message):
     user_id = message.from_user.id
@@ -749,7 +787,6 @@ async def idea_of_day(message: Message):
     await message.answer(f"💡 Идея дня:\n\n{idea}")
 
 
-# ===== Полезное =====
 @router.message(F.text == "📚 Полезное")
 async def ask_question(message: Message, state: FSMContext):
     await state.clear()
@@ -832,7 +869,6 @@ async def process_question(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ===== Самочувствие мамы =====
 @router.message(F.text == "❤️ Моё самочувствие")
 async def mom_mood(message: Message):
     await message.answer("Как ты себя чувствуешь?", reply_markup=mood_keyboard())
@@ -851,7 +887,6 @@ async def mood_callback(callback: types.CallbackQuery):
         await callback.message.answer("Помни: отдых мамы важен. Постарайся найти 15 минут для себя, пока малыш спит.")
 
 
-# ===== Часовой пояс =====
 @router.message(F.text == "🌍 Часовой пояс")
 async def timezone_menu(message: Message):
     user = get_user(message.from_user.id)
@@ -900,7 +935,6 @@ async def timezone_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ===== БРИФИНГ =====
 @router.message(F.text == "🌅 Брифинг")
 async def brief_menu(message: Message, state: FSMContext):
     await state.clear()

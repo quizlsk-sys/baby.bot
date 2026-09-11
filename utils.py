@@ -1,6 +1,7 @@
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from database import get_user, get_day_events, add_event, get_events_since, get_events_between
+from name_utils import decline_name
 
 
 def get_child_age_days(user_id: int):
@@ -107,13 +108,15 @@ def build_day_plan(user_id: int):
     wake_local = datetime.fromtimestamp(wake_ts, tz)
     avg_wake = (wake_min + wake_max) // 2
     avg_sleep = (dur_min + dur_max) // 2
-    name = user.get("child_name") or "Малыш"
+
+    name_nom = user.get("child_name") or "Малыш"
+    name_gen = decline_name(name_nom, "gent")
 
     bedtime = wake_local.replace(hour=bedtime_hour, minute=0, second=0, microsecond=0)
     if bedtime <= wake_local:
         bedtime = bedtime + timedelta(days=1)
 
-    lines = [f"📅 <b>План дня для {name}</b>\n"]
+    lines = [f"📅 <b>План дня для {name_gen}</b>\n"]
     lines.append(f"🌅 Подъём: {wake_local.strftime('%H:%M')}")
 
     cursor = wake_local

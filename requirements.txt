@@ -2,3 +2,5 @@ aiogram
 apscheduler
 flask
 gigachat
+pymorphy3
+pymorphy3-dicts-ru

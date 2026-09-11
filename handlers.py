@@ -29,6 +29,7 @@ from utils import (
     now_in_user_tz, to_user_tz, get_user_tz,
 )
 from ai_helper import generate_text
+from name_utils import decline_name
 
 router = Router()
 
@@ -42,17 +43,36 @@ MAIN_BUTTONS = [
 
 
 def _child_name(user) -> str:
+    """Возвращает имя в именительном падеже (Миша)."""
     if user and user.get("child_name"):
         name = user["child_name"]
-        # Если имя «странное» (с цифрами) — не показываем
         if any(ch.isdigit() for ch in name):
             return "Малыш"
         return name
     return "Малыш"
 
 
+def _name_nom(user) -> str:
+    return _child_name(user)
+
+
+def _name_gen(user) -> str:
+    return decline_name(_child_name(user), "gent")
+
+
+def _name_dat(user) -> str:
+    return decline_name(_child_name(user), "datv")
+
+
+def _name_acc(user) -> str:
+    return decline_name(_child_name(user), "accs")
+
+
+def _name_ablt(user) -> str:
+    return decline_name(_child_name(user), "ablt")
+
+
 def _is_valid_name(text: str) -> bool:
-    """Имя не должно содержать цифр и быть слишком длинным."""
     text = text.strip()
     if not text:
         return False
@@ -197,10 +217,12 @@ async def cmd_delete_me(message: Message, state: FSMContext):
 
 
 async def send_welcome_instructions(message: Message, user=None):
-    name = _child_name(user) if user else "Малыш"
+    name_nom = _name_nom(user) if user else "Малыш"
+    name_ablt = _name_ablt(user) if user else "Малышом"
+    name_gen = _name_gen(user) if user else "Малыша"
     text = (
         f"🎉 Отлично, всё настроено!\n\n"
-        f"👶 Имя малыша: <b>{name}</b>\n"
+        f"👶 Имя малыша: <b>{name_nom}</b>\n"
         f"<i>Если нужно поменять — отправь /rename</i>\n\n"
         f"📋 <b>Что можно настроить:</b>\n\n"
         f"1️⃣ <b>🌍 Часовой пояс</b>\n"
@@ -212,10 +234,10 @@ async def send_welcome_instructions(message: Message, user=None):
         f"👉 Кнопка «🌅 Брифинг» внизу.\n\n"
         f"💡 <b>Основные кнопки:</b>\n"
         f"😴 <b>Уснул</b> / 👶 <b>Проснулся</b> — быстрая отметка в один клик\n"
-        f"📅 <b>План дня</b> — расписание сна {name} на сегодня\n"
+        f"📅 <b>План дня</b> — расписание сна {name_gen} на сегодня\n"
         f"😴 <b>Сон</b> — расширенные отметки (15/30 мин назад, ночной сон, список снов)\n"
         f"📊 <b>Статистика</b> — сны за день, 3 дня или неделю\n"
-        f"💡 <b>Идея дня</b> — случайная идея для занятия\n"
+        f"💡 <b>Идея дня</b> — случайная идея для занятия с {name_ablt}\n"
         f"📚 <b>Полезное</b> — ответы на вопросы\n"
         f"❤️ <b>Самочувствие</b> — отметка настроения\n\n"
         f"Хорошего дня! 🌸"
@@ -231,7 +253,6 @@ async def cmd_start(message: Message, state: FSMContext):
 
     if user and user.get("consent_given"):
         current_name = user.get("child_name") or ""
-        # Если имя пустое или содержит цифры — предложить ввести заново
         if not _is_valid_name(current_name):
             await message.answer(
                 f"Кажется, в имени закралась ошибка: «{current_name or 'пусто'}».\n\n"
@@ -377,7 +398,7 @@ async def quick_sleep_start(message: Message):
     if not user:
         await message.answer("Сначала настрой бота через /start")
         return
-    name = _child_name(user)
+    name = _name_nom(user)
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_start", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
@@ -395,7 +416,7 @@ async def quick_sleep_end(message: Message):
     if not user:
         await message.answer("Сначала настрой бота через /start")
         return
-    name = _child_name(user)
+    name = _name_nom(user)
     now = int(datetime.now().timestamp())
     add_event(user_id, "sleep_end", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
@@ -477,9 +498,9 @@ async def cb_sleep_plan(callback: types.CallbackQuery):
 @router.callback_query(F.data == "sleep_day_menu")
 async def cb_day_menu(callback: types.CallbackQuery):
     user = get_user(callback.from_user.id)
-    name = _child_name(user)
+    name_gen = _name_gen(user)
     await callback.message.edit_text(
-        f"☀️ <b>Дневной сон {name}</b>\n\n"
+        f"☀️ <b>Дневной сон {name_gen}</b>\n\n"
         f"Отметь начало или конец дневного сна:",
         parse_mode="HTML",
         reply_markup=sleep_day_keyboard()
@@ -520,9 +541,9 @@ async def cb_day_end_30(callback: types.CallbackQuery):
 @router.callback_query(F.data == "sleep_night_menu")
 async def cb_night_menu(callback: types.CallbackQuery):
     user = get_user(callback.from_user.id)
-    name = _child_name(user)
+    name_gen = _name_gen(user)
     await callback.message.edit_text(
-        f"🌙 <b>Ночной сон {name}</b>\n\n"
+        f"🌙 <b>Ночной сон {name_gen}</b>\n\n"
         f"Вечером — «Заснул вечером», утром — «Проснулся утром».",
         parse_mode="HTML",
         reply_markup=sleep_night_keyboard()
@@ -547,7 +568,7 @@ async def _record_sleep(callback: types.CallbackQuery, event_type: str, minutes_
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
 
-    name = _child_name(user)
+    name = _name_nom(user)
     ts = int((datetime.now() - timedelta(minutes=minutes_ago)).timestamp())
     local = to_user_tz(user_id, ts).strftime('%H:%M')
     kind = "🌙 ночной сон" if is_night else "☀️ дневной сон"
@@ -585,7 +606,7 @@ async def cb_night_wake(callback: types.CallbackQuery):
     if not user:
         await callback.answer("Сначала настрой бота через /start", show_alert=True)
         return
-    name = _child_name(user)
+    name = _name_nom(user)
     now = int(datetime.now().timestamp())
     add_event(user_id, "night_wake", now)
     local = now_in_user_tz(user_id).strftime('%H:%M')
@@ -721,7 +742,7 @@ async def process_manual_time(message: Message, state: FSMContext):
     time_str = match.group(2)
     user_id = message.from_user.id
     user = get_user(user_id)
-    name = _child_name(user)
+    name = _name_nom(user)
     try:
         tz = get_user_tz(user_id)
         today = now_in_user_tz(user_id).date()
@@ -850,11 +871,12 @@ async def process_question(message: Message, state: FSMContext):
 
     age_days = get_child_age_days(user_id)
     age_months = age_days // 30 if age_days is not None else "неизвестно"
+    name_nom = _name_nom(user)
 
     prompt = (
         f"Ты — дружелюбный и заботливый помощник для мам. "
         f"Твоя задача — давать полезные и безопасные советы по уходу за ребёнком. "
-        f"Возраст ребёнка пользователя: примерно {age_months} месяцев. "
+        f"Имя ребёнка: {name_nom}. Возраст: примерно {age_months} месяцев. "
         f"Отвечай кратко, по делу и с эмпатией. "
         f"Если вопрос касается здоровья, всегда добавляй, что это не заменяет консультацию врача. "
         f"Вот вопрос мамы: '{user_question}'"
